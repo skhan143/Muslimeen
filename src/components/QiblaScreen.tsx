@@ -204,7 +204,7 @@ const QiblaScreen = forwardRef(
           }}
         >
           <Image
-            source={require("/Users/shahariyarnouman.khan/Desktop/workspace/Muslimeen/src/Assets/images/compass.png")}
+            source={require("src/Assets/images/compass.png")}
             style={[
               styles.image,
               {
