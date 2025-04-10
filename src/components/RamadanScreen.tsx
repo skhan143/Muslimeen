@@ -39,7 +39,7 @@ const RamadanScreen = () => {
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#0000ff" />
+                <ActivityIndicator size={50} color="#0000ff" />
       </View>
     );
   }

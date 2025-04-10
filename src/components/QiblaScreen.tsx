@@ -204,7 +204,7 @@ const QiblaScreen = forwardRef(
           }}
         >
           <Image
-            source={require("src/Assets/images/compass.png")}
+            source={require("../Assets/images/compass.png")}
             style={[
               styles.image,
               {
@@ -233,7 +233,7 @@ const QiblaScreen = forwardRef(
             }}
           >
             <Image
-              source={require("/Users/shahariyarnouman.khan/Desktop/workspace/Muslimeen/src/Assets/images/kaba.png")}
+              source={require('../Assets/images/kaba.png')}
               style={{
                 resizeMode: "center",
                 height: 100,
@@ -247,7 +247,7 @@ const QiblaScreen = forwardRef(
         </View>
         <View style={styles.qiblaDirection}>
           <Image
-            source={require("/Users/shahariyarnouman.khan/Desktop/workspace/Muslimeen/src/Assets/images/kaaba.png")}
+            source={require('../Assets/images/kaba.png')}
             style={{
               width: moderateScale(35, 0.25),
               height: moderateScale(35, 0.25),
