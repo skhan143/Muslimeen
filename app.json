@@ -11,7 +11,6 @@
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
-      
     },
     "assetBundlePatterns": [
       "**/*"
@@ -28,6 +27,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e3afeb57-c1cd-4be6-af15-e2a3a73b28ce"
+      }
     }
   }
 }

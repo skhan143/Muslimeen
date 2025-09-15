@@ -3,7 +3,6 @@ import {
   View, 
   Text, 
   ScrollView, 
-  Image, 
   TouchableOpacity, 
   StyleSheet, 
   ActivityIndicator,
@@ -15,13 +14,15 @@ import {
 import * as Location from 'expo-location';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
+import { requestNotificationPermission, schedulePrayerNotification, cancelPrayerNotification } from '../utils/notifications';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Theme colors (matching App.tsx)
 const theme = {
   primary: '#3498db',
   secondary: '#2ecc71',
   accent: '#e74c3c',
-  background: '#f8f9fa',
+  background: '#eaf6fb', // soft light blue
   text: '#2c3e50',
   textLight: '#7f8c8d',
   white: '#ffffff',
@@ -29,7 +30,25 @@ const theme = {
   shadow: '#000000',
 };
 
-const HomeScreen: React.FC = () => {
+const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+  // Store notification IDs for each prayer
+  const [notificationIds, setNotificationIds] = useState({
+    Fajr: null,
+    Sunrise: null,
+    Dhuhr: null,
+    Asr: null,
+    Maghrib: null,
+    Isha: null,
+  });
+  // Track notification status for each prayer
+  const [prayerNotifications, setPrayerNotifications] = useState({
+    Fajr: false,
+    Sunrise: false,
+    Dhuhr: false,
+    Asr: false,
+    Maghrib: false,
+    Isha: false,
+  });
   const [numProductsToShow, setNumProductsToShow] = useState(4);
   const [currentLocation, setCurrentLocation] = useState<any>(null);
   const [prayerTimes, setPrayerTimes] = useState<any>({});
@@ -43,8 +62,94 @@ const HomeScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [currentPrayer, setCurrentPrayer] = useState<string | null>(null);
+  const [ayah, setAyah] = useState<any>(null);
+  const [ayahLoading, setAyahLoading] = useState<boolean>(true);
+  const [selectedMadhab, setSelectedMadhab] = useState(0); // 0: Shafi’i/Maliki/Hanbali, 1: Hanafi
   const waveAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const ayahList = [
+    {
+      arabic: "رَبِّ إِنِّي لِمَا أَنْزَلْتَ إِلَيَّ مِنْ خَيْرٍ فَقِيرٌ",
+      translation: "O my Lord, surely I have need of whatever good You send me.",
+      surah: "Al-Qasas",
+      ayah: "24"
+    },
+    {
+      arabic: "وَقُلْ رَبِّ زِدْنِي عِلْمًا",
+      translation: "And say: My Lord, increase me in knowledge.",
+      surah: "Ta-Ha",
+      ayah: "114"
+    },
+    {
+      arabic: "إِنَّ مَعَ الْعُسْرِ يُسْرًا",
+      translation: "Indeed, with hardship [will be] ease.",
+      surah: "Ash-Sharh",
+      ayah: "6"
+    },
+    {
+      arabic: "اللَّهُ لَا إِلَهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ",
+      translation: "Allah! There is no deity except Him, the Ever-Living, the Sustainer of [all] existence.",
+      surah: "Al-Baqarah",
+      ayah: "255"
+    },
+    {
+      arabic: "إِنَّ اللَّهَ مَعَ الصَّابِرِينَ",
+      translation: "Indeed, Allah is with the patient.",
+      surah: "Al-Baqarah",
+      ayah: "153"
+    },
+    {
+      arabic: "وَمَا تَوْفِيقِي إِلَّا بِاللَّهِ",
+      translation: "And my success is not but through Allah.",
+      surah: "Hud",
+      ayah: "88"
+    },
+    {
+      arabic: "إِنَّ رَبِّي لَسَمِيعُ الدُّعَاءِ",
+      translation: "Indeed, my Lord is the Hearer of supplication.",
+      surah: "Ibrahim",
+      ayah: "39"
+    },
+    {
+      arabic: "فَإِنَّ مَعَ الْعُسْرِ يُسْرًا",
+      translation: "For indeed, with hardship [will be] ease.",
+      surah: "Ash-Sharh",
+      ayah: "5"
+    },
+    {
+      arabic: "إِنَّ اللَّهَ يُحِبُّ الْمُحْسِنِينَ",
+      translation: "Indeed, Allah loves the doers of good.",
+      surah: "Al-Baqarah",
+      ayah: "195"
+    },
+    {
+      arabic: "وَعِبَادُ الرَّحْمَٰنِ الَّذِينَ يَمْشُونَ عَلَى الْأَرْضِ هَوْنًا",
+      translation: "And the servants of the Most Merciful are those who walk upon the earth easily.",
+      surah: "Al-Furqan",
+      ayah: "63"
+    },
+    {
+      arabic: "رَبِّ اشْرَحْ لِي صَدْرِي",
+      translation: "My Lord, expand for me my breast [with assurance].",
+      surah: "Ta-Ha",
+      ayah: "25"
+    },
+    {
+      arabic: "اللَّهُمَّ إِنِّي أَسْأَلُكَ الْهُدَى وَالتُّقَى وَالْعَفَافَ وَالْغِنَى",
+      translation: "O Allah, I ask You for guidance, piety, chastity and self-sufficiency.",
+      surah: "Hadith (Prophetic)",
+      ayah: "N/A"
+    },
+    {
+      arabic: "رَبِّ يَسِّرْ وَلَا تُعَسِّرْ",
+      translation: "My Lord, make it easy and do not make it difficult.",
+      surah: "Hadith (Prophetic)",
+      ayah: "N/A"
+    }
+  ];
+
+  const [ayahIndex, setAyahIndex] = useState(Math.floor(Math.random() * ayahList.length));
 
   const fetchAllData = async () => {
     setIsLoading(true);
@@ -69,6 +174,11 @@ const HomeScreen: React.FC = () => {
     await fetchAllData();
     setIsRefreshing(false);
   };
+
+  // Request notification permission on mount
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   useEffect(() => {
     fetchAllData();
@@ -114,7 +224,7 @@ const HomeScreen: React.FC = () => {
       getPrayerTimes();
       reverseGeocode();
     }
-  }, [currentLocation]);
+  }, [currentLocation, selectedMadhab]);
 
   useEffect(() => {
     if (prayerTimes) {
@@ -149,7 +259,7 @@ const HomeScreen: React.FC = () => {
     const interval = setInterval(updateTime, 60000); // Update time every minute
 
     try {
-      const response = await axios.get('http://worldtimeapi.org/api/ip');
+      const response = await axios.get('https://worldtimeapi.org/api/ip');
       const { datetime } = response.data;
       const formattedDate = new Date(datetime).toLocaleDateString();
       const formattedTime = new Date(datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -158,9 +268,9 @@ const HomeScreen: React.FC = () => {
       console.error('Error fetching date info:', error);
       // Fallback to local time if API fails
       updateTime();
+    } finally {
+      return () => clearInterval(interval);
     }
-
-    return () => clearInterval(interval);
   };
 
   const fetchArabicDateInfo = async () => {
@@ -181,7 +291,7 @@ const HomeScreen: React.FC = () => {
 
     const { latitude, longitude } = currentLocation;
     const method = 2; // Choose the desired prayer times calculation method
-    const apiUrl = `http://api.aladhan.com/v1/timings/${Math.floor(Date.now() / 1000)}?latitude=${latitude}&longitude=${longitude}&method=${method}`;
+    const apiUrl = `http://api.aladhan.com/v1/timings/${Math.floor(Date.now() / 1000)}?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${selectedMadhab}`;
 
     try {
       const response = await axios.get(apiUrl);
@@ -273,6 +383,63 @@ const HomeScreen: React.FC = () => {
     setCurrentPrayer(currentPrayerName);
   };
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAyahIndex(prev => (prev + 1) % ayahList.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTo12Hour = (time: string) => {
+    if (!time) return '--:--';
+    const [hourStr, minuteStr] = time.split(':');
+    let hour = parseInt(hourStr, 10);
+    const minute = parseInt(minuteStr, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour === 0) hour = 12;
+    return `${hour}:${minute.toString().padStart(2, '0')} ${ampm}`;
+  };
+
+  // Helper function for timeline progress
+  function getTimelineProgress(prayerTimes, currentTime) {
+    const prayerOrder = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+    // Get prayer times in minutes
+    const times = prayerOrder.map(p => {
+      const t = prayerTimes[p];
+      if (!t) return null;
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    });
+    // Find current interval
+    const now = currentTime.getHours() * 60 + currentTime.getMinutes();
+    let startIdx = 0;
+    for (let i = 0; i < times.length - 1; i++) {
+      if (times[i] !== null && times[i + 1] !== null && now >= times[i] && now < times[i + 1]) {
+        startIdx = i;
+        break;
+      }
+      // If before first prayer
+      if (now < times[0]) {
+        startIdx = 0;
+        break;
+      }
+      // If after last prayer
+      if (now >= times[times.length - 1]) {
+        startIdx = times.length - 1;
+        break;
+      }
+    }
+    // Calculate progress within current interval
+    const start = times[startIdx];
+    const end = times[startIdx + 1] !== undefined ? times[startIdx + 1] : start;
+    if (now <= start) return (startIdx / (times.length - 1)) * 100;
+    if (end === start) return 100;
+    const intervalProgress = ((now - start) / (end - start));
+    const totalProgress = (startIdx + intervalProgress) / (times.length - 1);
+    return Math.max(0, Math.min(100, totalProgress * 100));
+  }
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -283,167 +450,322 @@ const HomeScreen: React.FC = () => {
   }
 
   return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={onRefresh}
-          colors={[theme.primary]}
-          tintColor={theme.primary}
-        />
-      }
+    <LinearGradient
+      colors={["#00515f", "#368a95"]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{ flex: 1 }}
     >
-      {error && (
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={24} color={theme.accent} />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-
-      <Image
-        source={{ uri: 'https://picsum.photos/1920/1080' }}
-        style={styles.banner}
-        resizeMode="cover"
-      />
-
-      {/* Location */}
-      {currentLocation && (
-        <View style={styles.locationContainer}>
-          <Ionicons name="location-outline" size={20} color={theme.primary} />
-          <Text style={styles.locationText}>
-            {locationName || 'Your Location'}
-          </Text>
-        </View>
-      )}
-
-      {/* Namaz (Prayer) Times */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="time-outline" size={24} color={theme.primary} />
-          <Text style={styles.sectionTitle}>Prayer Times</Text>
-        </View>
-        <View style={styles.prayerTimesGrid}>
-          {['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((prayer) => (
-            <Animated.View
-              key={prayer}
-              style={[
-                styles.prayerTimeCard,
-                currentPrayer === prayer && styles.currentPrayerCard,
-                currentPrayer === prayer && {
-                  transform: [{
-                    scale: waveAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 1.15]
-                    })
-                  }],
-                  opacity: fadeAnim
-                }
-              ]}
-            >
-              <View style={styles.prayerTimeContent}>
-                <Text style={[
-                  styles.prayerName,
-                  currentPrayer === prayer && styles.currentPrayerName
-                ]}>
-                  {prayer}
-                </Text>
-                <Text style={[
-                  styles.prayerTime,
-                  currentPrayer === prayer && styles.currentPrayerTime
-                ]}>
-                  {prayerTimes[prayer] || '--:--'}
-                </Text>
-                {currentPrayer === prayer && (
-                  <View style={styles.currentBadge}>
-                    <Text style={styles.currentBadgeText}>Current</Text>
-                  </View>
-                )}
-              </View>
-            </Animated.View>
-          ))}
-        </View>
-      </View>
-
-      {/* Ramadan Fasting Times */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="moon-outline" size={24} color={theme.primary} />
-          <Text style={styles.sectionTitle}>Ramadan Fasting Times</Text>
-        </View>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.prayerTimesContainer}
-        >
-          <View style={styles.prayerTimeCard}>
-            <Text style={styles.prayerName}>Suhar</Text>
-            <Text style={styles.prayerTime}>{prayerTimes.Imsak}</Text>
-          </View>
-          <View style={styles.prayerTimeCard}>
-            <Text style={styles.prayerName}>Iftar</Text>
-            <Text style={styles.prayerTime}>{prayerTimes.Maghrib}</Text>
-          </View>
-        </ScrollView>
-      </View>
-
-      {/* Arabic Date Information */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="book-outline" size={24} color={theme.primary} />
-          <Text style={styles.sectionTitle}>Islamic Date</Text>
-        </View>
-        {arabicDateInfo && (
-          <View style={styles.infoCard}>
-            <Text style={styles.infoText}>
-              {arabicDateInfo.data.hijri.date} | {arabicDateInfo.data.hijri.year} AH
-            </Text>
+      <ScrollView
+        style={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            colors={[theme.primary]}
+            tintColor={theme.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {error && (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={24} color={theme.accent} />
+            <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
-      </View>
 
-      {/* Popular Products Section */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="star-outline" size={24} color={theme.primary} />
-          <Text style={styles.sectionTitle}>Popular Products</Text>
-        </View>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.productsContainer}
+        {/* Top Card: Date, Balance, Actions */}
+        <LinearGradient
+          colors={["#00515f", "#368a95"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[styles.topCardWrap, { minHeight: 260, maxHeight: 340 }]}
         >
-          {/* Product cards would go here */}
-        </ScrollView>
+          <View style={{ flex: 1, flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'stretch', minWidth: 120, maxWidth: 340 }}>
+            <Text style={{
+              fontSize: 22,
+              fontWeight: 'bold',
+              color: theme.white,
+              letterSpacing: 0.5,
+              textAlign: 'left',
+              marginBottom: 4,
+              fontFamily: Platform.OS === 'ios' ? 'Arial Rounded MT Bold' : 'sans-serif',
+            }}>Assalamu Alaikum!</Text>
+            <Text style={{
+              fontSize: 15,
+              fontWeight: 'bold',
+              color: theme.white,
+              letterSpacing: 0.2,
+              textAlign: 'left',
+              marginBottom: 8,
+              fontFamily: Platform.OS === 'ios' ? 'Arial Rounded MT Bold' : 'sans-serif',
+            }}>{formattedDate}</Text>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
+              <Text style={{ fontSize: 28, color: '#f7e8a4', fontWeight: 'bold', textAlign: 'center', marginBottom: 10, fontFamily: Platform.OS === 'ios' ? 'Geeza Pro' : 'sans-serif', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4, lineHeight: 38 }}>
+                {ayahList[ayahIndex].arabic}
+              </Text>
+              <Text style={{ fontSize: 17, color: theme.white, textAlign: 'center', marginBottom: 6, fontWeight: '600', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>
+                {ayahList[ayahIndex].translation}
+              </Text>
+              <Text style={{ fontSize: 13, color: theme.textLight, textAlign: 'center', fontWeight: '500' }}>
+                {ayahList[ayahIndex].surah} • Ayah {ayahList[ayahIndex].ayah}
+              </Text>
+            </View>
+          </View>
+        </LinearGradient>
 
-        <TouchableOpacity
-          onPress={toggleProducts}
-          style={styles.moreButton}
+        {/* Location */}
+        {currentLocation && (
+          <LinearGradient
+            colors={["#0f2027", "#00515f", "#368a95"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.glassyPrayerCard, { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, marginBottom: 0 }]}
+          >
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="location-outline" size={22} color="#f7e8a4" style={{ marginRight: 8 }} />
+              <Text style={{ color: '#f7e8a4', fontSize: 17, fontWeight: 'bold', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }}>
+                {locationName || 'Your Location'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}
+              onPress={() => navigation.navigate('DonateUs')}
+            >
+              <Ionicons name="heart-outline" size={18} color="#ffd700" style={{ marginRight: 4 }} />
+              <Text style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 14 }}>Donate Us</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        )}
+
+        {/* Prayer Times Card */}
+        <LinearGradient
+          colors={["#0f2027", "#00515f", "#368a95"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.glassyPrayerCard}
         >
-          <Ionicons 
-            name={numProductsToShow === 4 ? "chevron-down-outline" : "chevron-up-outline"} 
-            size={20} 
-            color={theme.white} 
-          />
-          <Text style={styles.moreButtonText}>
-            {numProductsToShow === 4 ? 'Show More' : 'Show Less'}
+          <View style={styles.sectionHeader}>
+            <Ionicons name="time-outline" size={24} color="#f7e8a4" />
+            <Text style={[styles.sectionTitle, { color: '#f7e8a4', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }]}>Prayer Times</Text>
+          </View>
+          {/* Madhab Selection Card (Simplified) */}
+          <View style={{ marginBottom: 12 }}>
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 14, padding: 10, marginHorizontal: 2, marginBottom: 4, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#f7e8a4', shadowColor: '#00515f', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.10, shadowRadius: 8 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: selectedMadhab === 0 ? 'rgba(255,255,255,0.22)' : 'transparent', borderRadius: 10, padding: 8, alignItems: 'center', borderWidth: selectedMadhab === 0 ? 2 : 0, borderColor: selectedMadhab === 0 ? '#f7e8a4' : 'transparent' }}
+                onPress={() => setSelectedMadhab(0)}
+              >
+                <Text style={{ color: '#f7e8a4', fontWeight: 'bold', fontSize: 15 }}>Shafi’i/Maliki/Hanbali</Text>
+                <Text style={{ color: theme.white, fontSize: 12 }}>Earlier Asr (Mithl 1)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: selectedMadhab === 1 ? 'rgba(255,255,255,0.22)' : 'transparent', borderRadius: 10, padding: 8, alignItems: 'center', borderWidth: selectedMadhab === 1 ? 2 : 0, borderColor: selectedMadhab === 1 ? '#f7e8a4' : 'transparent' }}
+                onPress={() => setSelectedMadhab(1)}
+              >
+                <Text style={{ color: '#f7e8a4', fontWeight: 'bold', fontSize: 15 }}>Hanafi</Text>
+                <Text style={{ color: theme.white, fontSize: 12 }}>Later Asr (Mithl 2)</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.glassyPrayerTimeGrid}>
+            {['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((prayer) => (
+              <Animated.View
+                key={prayer}
+                style={[
+                  styles.glassyPrayerTimeCard,
+                  currentPrayer === prayer && styles.currentPrayerCard,
+                  currentPrayer === prayer && {
+                    transform: [{
+                      scale: waveAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1.15]
+                      })
+                    }],
+                    opacity: fadeAnim
+                  }
+                ]}
+              >
+                <View style={styles.prayerTimeContent}>
+                  <Text style={[
+                    styles.prayerName,
+                    { color: '#f7e8a4', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 },
+                    currentPrayer === prayer && styles.currentPrayerName
+                  ]}>
+                    {prayer === 'Asr' ? `Asr (${selectedMadhab === 0 ? 'Shafi’i' : 'Hanafi'})` : prayer}
+                  </Text>
+                  <Text style={[
+                    styles.prayerTime,
+                    { color: theme.white, fontWeight: 'bold', fontSize: 17 },
+                    currentPrayer === prayer && styles.currentPrayerTime
+                  ]}>
+                    {prayerTimes[prayer] ? formatTo12Hour(prayerTimes[prayer]) : '--:--'}
+                  </Text>
+                  {currentPrayer === prayer && (
+                    <View style={styles.currentBadge}>
+                      <Text style={styles.currentBadgeText}>Current</Text>
+                    </View>
+                  )}
+                  {/* Notification toggle button */}
+                  <TouchableOpacity
+                    style={{ marginTop: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row', gap: 6 }}
+                    onPress={async () => {
+                      const isOn = !prayerNotifications[prayer];
+                      setPrayerNotifications((prev) => ({
+                        ...prev,
+                        [prayer]: isOn,
+                      }));
+                      if (isOn) {
+                        // Schedule notification
+                        if (prayerTimes[prayer]) {
+                          const id = await schedulePrayerNotification(prayer, prayerTimes[prayer], `It's time for ${prayer} prayer.`);
+                          setNotificationIds((prev) => ({ ...prev, [prayer]: id }));
+                        }
+                      } else {
+                        // Cancel notification
+                        if (notificationIds[prayer]) {
+                          await cancelPrayerNotification(notificationIds[prayer]);
+                          setNotificationIds((prev) => ({ ...prev, [prayer]: null }));
+                        }
+                      }
+                      Alert.alert(
+                        `${prayer} Notification`,
+                        `Notifications for ${prayer} are now ${isOn ? 'ON' : 'OFF'}.`,
+                        [{ text: 'OK' }]
+                      );
+                    }}
+                  >
+                    <Ionicons
+                      name={prayerNotifications[prayer] ? 'notifications' : 'notifications-off-outline'}
+                      size={18}
+                      color={prayerNotifications[prayer] ? '#2ecc71' : theme.textLight}
+                    />
+                    <Text style={{ fontSize: 12, color: prayerNotifications[prayer] ? '#2ecc71' : theme.textLight, fontWeight: 'bold' }}>
+                      {prayerNotifications[prayer] ? 'On' : 'Off'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+            ))}
+          </View>
+          {/* Linear Timeline for Prayer Times */}
+          <View style={styles.timelineContainer}>
+            <View style={styles.timelineBar}>
+              {/* Progress Bar (absolute, behind dots) */}
+              <View style={[styles.timelineProgress, { width: `${getTimelineProgress(prayerTimes, currentTime)}%`, maxWidth: '100%', left: 0 }]} />
+              {/* Timeline Dots and Labels */}
+              {['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((prayer, idx, arr) => (
+                <View key={prayer} style={[styles.timelineDotWrap, idx === 0 ? { alignItems: 'flex-start' } : {}, idx === arr.length - 1 ? { alignItems: 'flex-end' } : {}] }>
+                  <View style={[styles.timelineDot, currentPrayer === prayer && styles.timelineDotActive]} />
+                  <Text style={[styles.timelineLabel, currentPrayer === prayer && styles.timelineLabelActive]}>{prayer}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+          {/* Credit text below Prayer Times card */}
+          <Text style={styles.creditText}>
+            Prayer times provided by Aladhan
           </Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        </LinearGradient>
+
+        {/* Quick Access Card for More, Settings, and Donate Us */}
+        <LinearGradient
+          colors={["#0f2027", "#00515f", "#368a95"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.glassyPrayerCard, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }]}
+        >
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="flash-outline" size={20} color="#f7e8a4" style={{ marginRight: 10 }} />
+            <Text style={[styles.sectionTitle, { fontSize: 15, color: '#f7e8a4', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }]}>Quick Access</Text>
+          </View>
+          <TouchableOpacity style={styles.quickAccessItem} onPress={() => navigation.navigate('More')}>
+            <Ionicons name="ellipsis-horizontal" size={28} color="#f7e8a4" />
+            <Text style={styles.quickAccessText}>More</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickAccessItem} onPress={() => navigation.navigate('Settings')}>
+            <Ionicons name="settings-outline" size={28} color="#f7e8a4" />
+            <Text style={styles.quickAccessText}>Settings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickAccessItem} onPress={() => navigation.navigate('DonateUs')}>
+            <Ionicons name="heart-outline" size={28} color="#ffd700" />
+            <Text style={[styles.quickAccessText, { color: '#ffd700' }]}>Donate Us</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+
+        {/* Ramadan Fasting Times Card */}
+        <LinearGradient
+          colors={["#0f2027", "#00515f", "#368a95"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.glassyPrayerCard}
+        >
+          <View style={styles.sectionHeader}>
+            <Ionicons name="moon-outline" size={24} color="#f7e8a4" />
+            <Text style={[styles.sectionTitle, { color: '#f7e8a4', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }]}>Fasting Times</Text>
+          </View>
+          <View style={styles.fastingTimesGrid}>
+            <View style={[styles.fastingTimeCard, { backgroundColor: 'rgba(255,255,255,0.13)', borderColor: '#f7e8a4', borderWidth: 1.5 }] }>
+              <Ionicons name="restaurant-outline" size={22} color="#f7e8a4" style={{ marginBottom: 6 }} />
+              <Text style={[styles.fastingLabel, { color: '#f7e8a4' }]}>Suhoor</Text>
+              <Text style={[styles.fastingTime, { color: theme.white }]}>{prayerTimes.Imsak ? formatTo12Hour(prayerTimes.Imsak) : '--:--'}</Text>
+            </View>
+            <View style={[styles.fastingTimeCard, { backgroundColor: 'rgba(255,255,255,0.13)', borderColor: '#f7e8a4', borderWidth: 1.5 }] }>
+              <Ionicons name="water-outline" size={22} color="#f7e8a4" style={{ marginBottom: 6 }} />
+              <Text style={[styles.fastingLabel, { color: '#f7e8a4' }]}>Iftar</Text>
+              <Text style={[styles.fastingTime, { color: theme.white }]}>{prayerTimes.Maghrib ? formatTo12Hour(prayerTimes.Maghrib) : '--:--'}</Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* Islamic Date Card */}
+        <LinearGradient
+          colors={["#0f2027", "#00515f", "#368a95"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.glassyPrayerCard}
+        >
+          <View style={styles.sectionHeader}>
+            <Ionicons name="book-outline" size={24} color="#f7e8a4" />
+            <Text style={[styles.sectionTitle, { color: '#f7e8a4', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }]}>Islamic Date</Text>
+          </View>
+          {arabicDateInfo && (
+            <View style={[styles.infoCard, { backgroundColor: 'rgba(255,255,255,0.13)', borderColor: '#f7e8a4', borderWidth: 1.5 }] }>
+              <Text style={[styles.infoText, { color: theme.white }] }>
+                {arabicDateInfo.data.hijri.date} | {arabicDateInfo.data.hijri.year} AH
+              </Text>
+            </View>
+          )}
+        </LinearGradient>
+
+        {/* Add space at the bottom for visual comfort above the tab bar */}
+        <View style={{ height: 90 }} />
+      </ScrollView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
+  creditText: {
+    fontSize: 12,
+    color: 'rgba(44,62,80,0.55)',
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    alignSelf: 'center',
+  },
   container: {
     flex: 1,
-    backgroundColor: theme.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.background,
   },
   loadingText: {
     marginTop: 10,
@@ -466,9 +788,71 @@ const styles = StyleSheet.create({
     fontSize: 14,
     flex: 1,
   },
-  banner: {
-    height: 200,
-    width: '100%',
+  greetingContainer: {
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  greetingText: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: theme.primary,
+    letterSpacing: 0.5,
+  },
+  dateText: {
+    fontSize: 15,
+    color: theme.textLight,
+    marginTop: 2,
+  },
+  quranQuoteCard: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 16,
+    padding: 20,
+    margin: 16,
+    alignItems: 'center',
+    shadowColor: theme.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  quranIcon: {
+    marginBottom: 8,
+  },
+  quranAyahArabic: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: theme.primary,
+    textAlign: 'center',
+    marginBottom: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Geeza Pro' : 'sans-serif',
+  },
+  quranAyahTranslation: {
+    fontSize: 16,
+    color: theme.text,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  quranAyahMeta: {
+    fontSize: 13,
+    color: theme.textLight,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  nextQuoteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: theme.primary + '10',
+  },
+  nextQuoteText: {
+    color: theme.primary,
+    fontWeight: 'bold',
+    marginLeft: 6,
+    fontSize: 15,
   },
   locationContainer: {
     flexDirection: 'row',
@@ -517,55 +901,107 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     paddingHorizontal: 4,
+    // Fix: Ensure cards wrap correctly and don't overflow
+    rowGap: 12, // Add vertical spacing between rows (RN 0.71+)
+    columnGap: 8, // Add horizontal spacing between columns (RN 0.71+)
   },
   prayerTimeCard: {
     backgroundColor: theme.white,
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 0,
     width: '48%',
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    borderWidth: 1,
+    borderColor: theme.border,
+    shadowColor: 'transparent',
+    elevation: 0,
+  },
+  glassyPrayerCard: {
+    borderRadius: 22,
+    padding: 18,
+    marginVertical: 12,
+    marginHorizontal: 8,
+    backgroundColor: 'rgba(15,32,39,0.55)',
+    shadowColor: '#00515f',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    borderWidth: 2,
+    borderColor: '#f7e8a4',
+    overflow: 'hidden',
+  },
+  glassCard: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 18,
+    padding: 18,
+    marginVertical: 10,
+    marginHorizontal: 8,
+    shadowColor: '#00515f',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    borderWidth: 2,
+    borderColor: '#f7e8a4',
+    overflow: 'hidden',
+  },
+  glassyPrayerTimeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 8,
+  },
+  glassyPrayerTimeCard: {
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
+    width: '30%',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#f7e8a4',
+    shadowColor: '#00515f',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    overflow: 'hidden',
   },
   prayerTimeContent: {
     alignItems: 'center',
-    width: '100%',
-    paddingVertical: 8,
+  },
+  currentPrayerCard: {
+    borderColor: '#ffd700',
+    borderWidth: 2.5,
+    shadowColor: '#ffd700',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    backgroundColor: 'rgba(55, 80, 120, 0.22)',
   },
   prayerName: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 'bold',
-    color: theme.text,
-    marginBottom: 8,
+    marginBottom: 2,
   },
   prayerTime: {
-    fontSize: 16,
-    color: theme.textLight,
+    fontSize: 17,
+    fontWeight: 'bold',
+    marginBottom: 2,
   },
   infoCard: {
-    backgroundColor: theme.white,
+    backgroundColor: 'rgba(255,255,255,0.93)',
     padding: 16,
     borderRadius: 8,
     ...Platform.select({
       ios: {
         shadowColor: theme.shadow,
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.10,
         shadowRadius: 4,
       },
       android: {
-        elevation: 2,
+        elevation: 3,
       },
     }),
   },
@@ -592,45 +1028,222 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 8,
   },
-  currentPrayerCard: {
-    backgroundColor: theme.primary + '10',
-    borderWidth: 2,
-    borderColor: theme.primary,
-  },
   currentBadge: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: theme.primary,
+    backgroundColor: '#ffd700',
+    borderRadius: 8,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
+    paddingVertical: 2,
+    marginTop: 4,
   },
   currentBadgeText: {
-    color: theme.white,
-    fontSize: 12,
+    color: '#00515f',
     fontWeight: 'bold',
+    fontSize: 12,
   },
   currentPrayerName: {
-    color: theme.primary,
-    fontSize: 22,
-    fontWeight: 'bold',
+    color: '#ffd700',
+    textShadowColor: '#00515f',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
   currentPrayerTime: {
-    color: theme.primary,
+    color: '#ffd700',
+  },
+  fastingTimesGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginHorizontal: 8,
+    marginBottom: 8,
+  },
+  fastingTimeCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 18,
+    alignItems: 'center',
+    paddingVertical: 18,
+    marginHorizontal: 4,
+    shadowColor: theme.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: theme.primary + '22',
+  },
+  fastingLabel: {
+    fontSize: 16,
+    color: theme.text,
+    fontWeight: 'bold',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  fastingTime: {
     fontSize: 20,
-    fontWeight: '600',
+    color: theme.primary,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+  topCardWrap: {
+    flexDirection: 'row',
+    backgroundColor: 'linear-gradient(90deg, #0f2027 0%, #2c5364 100%)', // fallback for web, but for RN use gradient below
+    borderRadius: 22,
+    margin: 16,
+    padding: 18,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: theme.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    elevation: 6,
+    gap: 12,
+    // For React Native, use a LinearGradient wrapper instead of backgroundColor
+  },
+  topCardLeft: {
+    flex: 1.1,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    minWidth: 120,
+    maxWidth: 160,
+  },
+  topCardRight: {
+    flex: 2,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    minHeight: 70,
+    minWidth: 0,
+    maxWidth: 220,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    shadowColor: theme.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  quranAyahShort: {
+    fontSize: 15,
+    color: theme.text,
+    fontWeight: '500',
+    marginBottom: 4,
+    textAlign: 'left',
+  },
+  quranAyahMetaSmall: {
+    fontSize: 12,
+    color: theme.textLight,
+    marginTop: 2,
+    textAlign: 'left',
+  },
+  userName: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 2,
+    marginBottom: 2,
+    letterSpacing: 0.5,
+  },
+  balanceLabel: {
+    fontSize: 14,
+    color: '#b2ebf2',
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  balanceValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 2,
+    marginBottom: 2,
+    letterSpacing: 1,
+  },
+  timelineContainer: {
+    marginTop: 18,
+    marginBottom: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  timelineBar: {
+    position: 'relative',
+    width: '100%',
+    height: 54,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    overflow: 'visible',
+  },
+  timelineDotWrap: {
+    alignItems: 'center',
+    width: '16%',
+    position: 'relative',
+  },
+  timelineDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#f7e8a4',
+    borderWidth: 2,
+    borderColor: '#00515f',
+    marginBottom: 2,
+    shadowColor: '#00515f',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+  },
+  timelineDotActive: {
+    backgroundColor: '#ffd700',
+    borderColor: '#ffd700',
+    shadowColor: '#ffd700',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+  },
+  timelineLabel: {
+    fontSize: 12,
+    color: theme.white,
+    fontWeight: '500',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  timelineLabelActive: {
+    color: '#ffd700',
+    fontWeight: 'bold',
+    textShadowColor: '#00515f',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  timelineTime: {
+    fontSize: 11,
+    color: theme.textLight,
+    marginTop: 1,
+    textAlign: 'center',
+  },
+  timelineProgress: {
+    position: 'absolute',
+    top: 0, // Move progress bar higher above dots
+    left: 8,
+    height: 4,
+    backgroundColor: '#ffd700',
+    borderRadius: 2,
+    zIndex: 1,
+  },
+  quickAccessItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    marginHorizontal: 4,
+  },
+  quickAccessText: {
+    color: '#f7e8a4',
+    fontWeight: 'bold',
+    fontSize: 15,
+    marginTop: 4,
+    textAlign: 'center',
   },
 });
 
