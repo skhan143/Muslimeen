@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
 // Stripe Product ID: prod_St2qhu5QB5sjjy
-const DONATE_URL = 'https://donate.stripe.com/test_6oUaEQ7Vx8AMb8s5gN1RC00'; // Stripe payment link
+const DONATE_URL = 'https://donate.stripe.com/7sY28r3Mhd1U8fD3SxeEo00'; // Stripe payment link
 
 const DonateUs: React.FC = () => {
   const handleDonate = () => {

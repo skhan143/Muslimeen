@@ -16,7 +16,15 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "NSUserTrackingUsageDescription": "This app may request permission to track for improved personalization.",
+        "NSLocationWhenInUseUsageDescription": "Needed to calculate prayer times and Qibla direction.",
+        "NSCalendarsUsageDescription": "Optional: used for adding prayer reminders to your calendar."
+      }
     },
     "android": {
       "adaptiveIcon": {

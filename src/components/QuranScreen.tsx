@@ -1,5 +1,5 @@
 import { Linking } from 'react-native';
-const DONATE_URL = 'https://donate.stripe.com/test_6oUaEQ7Vx8AMb8s5gN1RC00';
+const DONATE_URL = 'https://donate.stripe.com/7sY28r3Mhd1U8fD3SxeEo00';
 // src/screens/Quran.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Image, ActivityIndicator, Platform, TextInput, Alert } from 'react-native';

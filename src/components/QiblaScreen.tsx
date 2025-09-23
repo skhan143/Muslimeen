@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef } from "react";
-
 import PropTypes from "prop-types";
 import {
   Image,
@@ -7,7 +6,7 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  Vibration,
+  Platform,
 } from "react-native";
 import { Magnetometer } from "expo-sensors";
 import * as Haptics from "expo-haptics";
@@ -22,11 +21,14 @@ const VIBRATION_THRESHOLD = 10;
 
 export const useQiblaCompass = () => {
   const subscriptionRef = useRef<any>(null);
-  const [magnetometer, setMagnetometer] = useState(0);
+  const headingWatchRef = useRef<any>(null);
+  const [heading, setHeading] = useState<number>(0);
+  const [headingSmooth, setHeadingSmooth] = useState<number>(0);
+  const [declination, setDeclination] = useState<number>(0);
+  const declinationRef = useRef<number>(0);
   const [qiblad, setQiblad] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const hasVibratedRef = useRef(false);
   const isFocused = useIsFocused();
 
   // Normalize angle to be between 0–359
@@ -35,9 +37,7 @@ export const useQiblaCompass = () => {
   const initCompass = useCallback(async () => {
     const isAvailable = await Magnetometer.isAvailableAsync();
     if (!isAvailable) {
-      setError("Compass is not available on this device");
-      setIsLoading(false);
-      return;
+      // Continue anyway; OS heading may still be provided
     }
 
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -51,7 +51,26 @@ export const useQiblaCompass = () => {
       const location = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = location.coords;
       calculateQibla(latitude, longitude);
-      subscribe();
+      // Fetch approximate declination once per location (improves Android accuracy)
+      fetchDeclination(latitude, longitude).catch(() => {});
+      // Prefer OS-provided heading (tilt-compensated); fallback to raw magnetometer
+      try {
+        headingWatchRef.current = await Location.watchHeadingAsync((data: any) => {
+          const trueH = typeof data?.trueHeading === 'number' && data.trueHeading >= 0 ? data.trueHeading : null;
+          const magH = typeof data?.magHeading === 'number' ? data.magHeading : (typeof data?.magneticHeading === 'number' ? data.magneticHeading : null);
+          let h = 0;
+          if (trueH !== null) {
+            h = trueH;
+          } else if (magH !== null) {
+            h = normalizeAngle(magH + (declinationRef.current || 0));
+          } else if (typeof data?.heading === 'number') {
+            h = normalizeAngle(data.heading);
+          }
+          setHeading(h);
+        });
+      } catch (e) {
+        subscribe();
+      }
     } catch (err) {
       setError("Failed to get location.");
     } finally {
@@ -62,13 +81,15 @@ export const useQiblaCompass = () => {
   const subscribe = () => {
     Magnetometer.setUpdateInterval(100);
     subscriptionRef.current = Magnetometer.addListener((data) => {
-      setMagnetometer(getCompassAngle(data));
+      setHeading(getCompassAngle(data));
     });
   };
 
   const unsubscribe = () => {
     subscriptionRef.current?.remove();
     subscriptionRef.current = null;
+    headingWatchRef.current?.remove?.();
+    headingWatchRef.current = null;
   };
 
   useEffect(() => {
@@ -93,8 +114,6 @@ export const useQiblaCompass = () => {
     return "N";
   };
 
-  const getAdjustedDegree = (magnetometer: number) => (magnetometer + 270) % 360;
-
   const calculateQibla = (latitude: number, longitude: number) => {
     const PI = Math.PI;
     const latK = (21.4225 * PI) / 180;
@@ -111,14 +130,51 @@ export const useQiblaCompass = () => {
 
     setQiblad(normalizeAngle(angle));
   };
+  // Fetch magnetic declination from NOAA service (best-effort). Cached in ref/state.
+  const fetchDeclination = useCallback(async (lat: number, lon: number) => {
+    try {
+      const year = new Date().getFullYear();
+      const url = `https://www.ngdc.noaa.gov/geomag-web/calculators/calculateDeclination?lat=${lat}&lon=${lon}&startYear=${year}&resultFormat=json`;
+      const res = await fetch(url);
+      const json = await res.json();
+      const findDecl = (obj: any): number | null => {
+        if (!obj || typeof obj !== 'object') return null;
+        for (const k of Object.keys(obj)) {
+          const v = (obj as any)[k];
+          if (typeof v === 'number' && k.toLowerCase().includes('declin')) return v;
+          const nested = findDecl(v);
+          if (nested !== null) return nested;
+        }
+        return null;
+      };
+      const dec = findDecl(json);
+      if (typeof dec === 'number' && isFinite(dec)) {
+        setDeclination(dec);
+        declinationRef.current = dec;
+      }
+    } catch {
+      // ignore network errors; stick with 0 declination
+    }
+  }, []);
 
-  const compassDegree = getAdjustedDegree(magnetometer);
+  // Smooth heading to reduce jitter (wrap-aware)
+  const smoothRef = useRef<number>(0);
+  useEffect(() => {
+    const prev = smoothRef.current;
+    const curr = heading;
+    const alpha = 0.15; // smoothing factor
+    let delta = ((curr - prev + 540) % 360) - 180;
+    const next = normalizeAngle(prev + alpha * delta);
+    smoothRef.current = next;
+    setHeadingSmooth(next);
+  }, [heading]);
+
+  const compassDegree = headingSmooth; // already true-heading when available
   const compassDirection = getDirectionLabel(compassDegree);
   const compassRotate = 360 - compassDegree;
   const kabaRotate = compassRotate + qiblad;
 
   // Vibration logic
-  // Point-wise haptic feedback: only on significant movement, increases as you get closer
   const lastDeltaRef = useRef<number | null>(null);
   useEffect(() => {
     if (isLoading || !isFocused) return;
@@ -126,7 +182,6 @@ export const useQiblaCompass = () => {
     const difference = Math.abs(qiblad - compassDegree);
     const delta = Math.min(difference, 360 - difference); // handles circular degree comparison
 
-    // Only give feedback if delta changes by at least 2 degrees
     if (lastDeltaRef.current === null || Math.abs(delta - lastDeltaRef.current) >= 4) {
       if (delta <= VIBRATION_THRESHOLD) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -174,6 +229,8 @@ const QiblaScreen = forwardRef<any, QiblaScreenProps>((
   } = useQiblaCompass();
 
   const angleDelta = Math.abs(qiblad - compassDegree);
+  const arrowRotate = ((qiblad - compassDegree + 360) % 360);
+  const kabaOverlayRotate = ((qiblad + compassDegree) % 360);
 
   useImperativeHandle(ref, () => ({ reinitCompass }), []);
 
@@ -197,7 +254,6 @@ const QiblaScreen = forwardRef<any, QiblaScreenProps>((
       end={{ x: 1, y: 1 }}
       style={{ flex: 1 }}
     >
-      {/* Move instructional text to the very top of the screen */}
       <View style={{ width: '100%', alignItems: 'center', marginTop: 10, position: 'absolute', top: 0, left: 0, zIndex: 10 }}>
         <Text style={{
           color: '#00515f',
@@ -253,24 +309,23 @@ const QiblaScreen = forwardRef<any, QiblaScreenProps>((
                   </View>
                   <Image
                     source={require("../Assets/images/compass.png")}
-                    style={[styles.image, { transform: [{ rotate: `${compassRotate}deg` }], marginTop: moderateScale(40, 0.25) }]}
+                    style={[styles.image as any, { transform: [{ rotate: `${compassRotate}deg` }], marginTop: moderateScale(40, 0.25) }]}
                   />
                   <View
                     style={[styles.kabaOverlay, { transform: [{ rotate: `${kabaRotate}deg` }], marginTop: moderateScale(40, 0.25) }]}
                   >
                     <Image
                       source={require("../Assets/images/kaba.png")}
-                      style={styles.kabaImage}
+                      style={styles.kabaImage as any}
                     />
                   </View>
                 </View>
 
-                {/* Add extra spacing below compass for Qibla angle */}
                 <View style={{ height: 32 }} />
                 <View style={[styles.qiblaDirection, { marginTop: 12, padding: 12, borderRadius: 16, backgroundColor: '#eaf6fbCC', alignSelf: 'center', minWidth: 120, justifyContent: 'center', alignItems: 'center', shadowColor: '#368a95', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.10, shadowRadius: 6, elevation: 2 }] }>
                   <Image
                     source={require("../Assets/images/kaba.png")}
-                    style={styles.kabaIcon}
+                    style={styles.kabaIcon as any}
                   />
                   <Text style={{
                     fontSize: 28,
@@ -287,7 +342,6 @@ const QiblaScreen = forwardRef<any, QiblaScreenProps>((
                   </Text>
                 </View>
 
-                {/* Move instructional text directly below Qibla angle card for better visibility */}
                 <View style={{ marginTop: 3, marginBottom: 3 }}>
                   <Text style={{ color: '#2c3e50', fontSize: 12, textAlign: 'center', fontWeight: '400', opacity: 0.85 }}>
                     Please keep your phone flat and facing towards the Qibla direction for best accuracy.
@@ -299,8 +353,7 @@ const QiblaScreen = forwardRef<any, QiblaScreenProps>((
         </View>
     </LinearGradient>
     );
-  }
-);
+});
 
 QiblaScreen.propTypes = {
   backgroundColor: PropTypes.string,
@@ -335,14 +388,6 @@ const styles = StyleSheet.create({
     height: moderateScale(300, 0.25),
     position: "relative",
   },
-  image: {
-    resizeMode: "contain",
-    alignSelf: "center",
-    position: "absolute",
-    top: 0,
-    width: moderateScale(300, 0.25),
-    height: moderateScale(300, 0.25),
-  },
   kabaOverlay: {
     width: moderateScale(300, 0.25),
     height: moderateScale(300, 0.25),
@@ -367,6 +412,14 @@ const styles = StyleSheet.create({
   kabaIcon: {
     width: moderateScale(35, 0.25),
     height: moderateScale(35, 0.25),
+  },
+  image: {
+    resizeMode: "contain",
+    alignSelf: "center",
+    position: "absolute",
+    top: 0,
+    width: moderateScale(300, 0.25),
+    height: moderateScale(300, 0.25),
   },
   arrowOverlay: {
     position: "absolute",
@@ -400,6 +453,117 @@ const styles = StyleSheet.create({
     height: 28,
     backgroundColor: "#2e7d32",
     borderRadius: 2,
+  },
+  cardinalText: {
+    position: 'absolute',
+    color: '#b0bcc7',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  cardinalTop: {
+    top: moderateScale(12, 0.25),
+    alignSelf: 'center',
+  },
+  cardinalRight: {
+    right: moderateScale(12, 0.25),
+    top: '50%',
+    transform: [{ translateY: -9 }],
+  },
+  cardinalBottom: {
+    bottom: moderateScale(12, 0.25),
+    alignSelf: 'center',
+  },
+  cardinalLeft: {
+    left: moderateScale(12, 0.25),
+    top: '50%',
+    transform: [{ translateY: -9 }],
+  },
+  centeredOverlay: {
+    position: 'absolute',
+    width: moderateScale(300, 0.25),
+    height: moderateScale(300, 0.25),
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1001,
+  },
+  rotatingPlate: {
+    position: 'absolute',
+    width: moderateScale(300, 0.25),
+    height: moderateScale(300, 0.25),
+    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  outerRing: {
+    width: moderateScale(300, 0.25),
+    height: moderateScale(300, 0.25),
+    borderRadius: moderateScale(150, 0.25),
+    backgroundColor: '#f7f7f7',
+    borderWidth: moderateScale(14, 0.25),
+    borderColor: '#ebe7e6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  innerFace: {
+    width: moderateScale(240, 0.25),
+    height: moderateScale(240, 0.25),
+    borderRadius: moderateScale(120, 0.25),
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tick: {
+    position: 'absolute',
+    width: moderateScale(6, 0.25),
+    height: moderateScale(18, 0.25),
+    backgroundColor: '#e6e6e6',
+    borderRadius: 2,
+  },
+  tickTop: {
+    top: moderateScale(12, 0.25),
+    alignSelf: 'center',
+  },
+  tickRight: {
+    right: moderateScale(12, 0.25),
+    top: '50%',
+    transform: [{ translateY: -9 }, { rotate: '90deg' }],
+  },
+  tickBottom: {
+    bottom: moderateScale(12, 0.25),
+    alignSelf: 'center',
+  },
+  tickLeft: {
+    left: moderateScale(12, 0.25),
+    top: '50%',
+    transform: [{ translateY: -9 }, { rotate: '90deg' }],
+  },
+  arrowStaticWrapper: {
+    position: 'absolute',
+    width: moderateScale(300, 0.25),
+    height: moderateScale(300, 0.25),
+    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1002,
+  },
+  arrowHeadUp: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 10,
+    borderRightWidth: 10,
+    borderBottomWidth: 18,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#2e7d32',
+    marginBottom: -2,
+  },
+  arrowShaftUp: {
+    width: 4,
+    height: 36,
+    backgroundColor: '#2e7d32',
+    borderRadius: 2,
+    marginTop: -4,
   },
   arrowGlow: {
     shadowColor: '#1bc700',

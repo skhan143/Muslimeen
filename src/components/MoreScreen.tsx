@@ -7,7 +7,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { Keyboard } from 'react-native';
@@ -15,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import ZakatCalculator from './ZakatCalculator';
 import ScrollTasbih from './ScrollTasbih';
 import ZabihaHalalRestaurants from './ZabihaHalalRestaurants';
-import CalendarScreen from './CalendarScreen';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -35,7 +33,7 @@ const theme = {
 
 const MoreScreen: React.FC = () => {
   const navigation = useNavigation();
-  const [activeScreen, setActiveScreen] = useState<'more' | 'tasbih' | 'zabiha' | 'zakat' | 'calendar'>('more');
+  const [activeScreen, setActiveScreen] = useState<'more' | 'tasbih' | 'zabiha' | 'zakat'>('more');
 
   // --- More Menu ---
   if (activeScreen === 'more') {
@@ -68,10 +66,7 @@ const MoreScreen: React.FC = () => {
                   <Ionicons name="calculator-outline" size={28} color={theme.primary} style={{ marginBottom: 6 }} />
                   <Text style={styles.moreMenuText}>Zakat Calculator</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.moreMenuButton} onPress={() => setActiveScreen('calendar')}>
-                  <Ionicons name="calendar-outline" size={28} color={theme.primary} style={{ marginBottom: 6 }} />
-                  <Text style={styles.moreMenuText}>Calendar</Text>
-                </TouchableOpacity>
+                {/* Family Routine removed for v1 (moved to experimental) */}
                 <TouchableOpacity style={styles.settingsMenuButton} onPress={() => (navigation as any).navigate('Settings', { fromMore: true })}>
                   <Ionicons name="settings-outline" size={28} color={theme.primary} style={{ marginBottom: 6 }} />
                   <Text style={styles.moreMenuText}>Settings</Text>
@@ -121,16 +116,7 @@ const MoreScreen: React.FC = () => {
   }
 
   // --- Calendar Screen ---
-  if (activeScreen === 'calendar') {
-    return (
-      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-        <TouchableOpacity style={styles.backButton} onPress={() => setActiveScreen('more')}>
-          <Ionicons name="arrow-back" size={22} color={theme.primary} />
-        </TouchableOpacity>
-        <CalendarScreen />
-      </View>
-    );
-  }
+  // calendar removed for v1; coming in v2
 
   return null;
 };

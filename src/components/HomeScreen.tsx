@@ -13,8 +13,9 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { requestNotificationPermission, schedulePrayerNotification, cancelPrayerNotification } from '../utils/notifications';
+import { requestNotificationPermission, schedulePrayerNotification, cancelPrayerNotification, persistScheduledId, removePersistedId, restoreScheduledIds } from '../utils/notifications';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // Theme colors (matching App.tsx)
@@ -180,6 +181,24 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     requestNotificationPermission();
   }, []);
 
+  // Restore persisted scheduled ids when HomeScreen mounts so toggles reflect actual scheduled state
+  useEffect(() => {
+    (async () => {
+      const restored = await restoreScheduledIds();
+      if (restored) {
+        // restored entries are { prayer: { id, time } }
+        const ids: any = {};
+        const toggles: any = {};
+        Object.keys(restored).forEach(k => {
+          ids[k] = restored[k];
+          toggles[k] = true;
+        });
+        setNotificationIds(prev => ({ ...prev, ...ids }));
+        setPrayerNotifications(prev => ({ ...prev, ...toggles }));
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     fetchAllData();
     const timer = setInterval(() => {
@@ -298,6 +317,12 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       if (response.data?.data?.timings) {
         const data = response.data.data.timings;
         setPrayerTimes(data);
+        // Persist latest prayer times so other screens can use them (Notifications screen)
+        try {
+          await AsyncStorage.setItem('prayerTimes:latest', JSON.stringify(data));
+        } catch (e) {
+          console.warn('Failed to persist prayer times', e);
+        }
         const ramadanFastingTimes = {
           Imsak: data.Imsak,
           Maghrib: data.Maghrib,
@@ -558,14 +583,14 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                 onPress={() => setSelectedMadhab(0)}
               >
                 <Text style={{ color: '#f7e8a4', fontWeight: 'bold', fontSize: 15 }}>Shafi’i/Maliki/Hanbali</Text>
-                <Text style={{ color: theme.white, fontSize: 12 }}>Earlier Asr (Mithl 1)</Text>
+                <Text style={{ color: theme.white, fontSize: 12 }}>Earlier Asr</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ flex: 1, backgroundColor: selectedMadhab === 1 ? 'rgba(255,255,255,0.22)' : 'transparent', borderRadius: 10, padding: 8, alignItems: 'center', borderWidth: selectedMadhab === 1 ? 2 : 0, borderColor: selectedMadhab === 1 ? '#f7e8a4' : 'transparent' }}
                 onPress={() => setSelectedMadhab(1)}
               >
                 <Text style={{ color: '#f7e8a4', fontWeight: 'bold', fontSize: 15 }}>Hanafi</Text>
-                <Text style={{ color: theme.white, fontSize: 12 }}>Later Asr (Mithl 2)</Text>
+                <Text style={{ color: theme.white, fontSize: 12 }}>Later Asr</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -616,19 +641,21 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                         ...prev,
                         [prayer]: isOn,
                       }));
-                      if (isOn) {
-                        // Schedule notification
-                        if (prayerTimes[prayer]) {
-                          const id = await schedulePrayerNotification(prayer, prayerTimes[prayer], `It's time for ${prayer} prayer.`);
-                          setNotificationIds((prev) => ({ ...prev, [prayer]: id }));
-                        }
-                      } else {
-                        // Cancel notification
-                        if (notificationIds[prayer]) {
-                          await cancelPrayerNotification(notificationIds[prayer]);
-                          setNotificationIds((prev) => ({ ...prev, [prayer]: null }));
-                        }
-                      }
+                          if (isOn) {
+                            // Schedule notification
+                            if (prayerTimes[prayer]) {
+                              const id = await schedulePrayerNotification(prayer, prayerTimes[prayer], `It's time for ${prayer} prayer.`);
+                              setNotificationIds((prev) => ({ ...prev, [prayer]: { id, time: prayerTimes[prayer] } }));
+                              await persistScheduledId(prayer, id, prayerTimes[prayer]);
+                            }
+                          } else {
+                            // Cancel notification
+                            if (notificationIds[prayer] && notificationIds[prayer].id) {
+                              await cancelPrayerNotification(notificationIds[prayer].id);
+                              await removePersistedId(prayer);
+                              setNotificationIds((prev) => ({ ...prev, [prayer]: null }));
+                            }
+                          }
                       Alert.alert(
                         `${prayer} Notification`,
                         `Notifications for ${prayer} are now ${isOn ? 'ON' : 'OFF'}.`,

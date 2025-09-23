@@ -5,7 +5,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 
 // Enhanced: Smoother animation, better accessibility, and visual polish
-const TYPING_SPEED = 55;
+// Reduced timings so intro proceeds faster (shorter display for donation/credits)
+const TYPING_SPEED = 50;
 const ERASING_SPEED = 1;
 const MESSAGES = [
   "Qalby Muslim",
@@ -43,11 +44,11 @@ const IntroScreen = ({ onFinish }: { onFinish: () => void }) => {
         idx++;
         typingTimeout = setTimeout(typeNextChar, TYPING_SPEED);
       } else {
-        setTimeout(() => setPhase('erasing'), 400);
+        setTimeout(() => setPhase('erasing'), 300);
       }
     }
     function erasePrevChar() {
-      if (idx > 0) {
+        if (idx > 0) {
         setCurrentDisplayed(MESSAGES[currentMessage].slice(0, idx - 1));
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         idx--;
@@ -57,11 +58,11 @@ const IntroScreen = ({ onFinish }: { onFinish: () => void }) => {
           setTimeout(() => {
             setCurrentMessage((m) => m + 1);
             setPhase('typing');
-          }, 200);
+          }, 100);
         } else {
           setTyping(false);
           setPhase('done');
-          setTimeout(() => onFinish(), 700);
+          setTimeout(() => onFinish(), 300);
         }
       }
     }
