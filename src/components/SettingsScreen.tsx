@@ -34,6 +34,9 @@ const APP_LINK_ANDROID = 'https://play.google.com/store/apps/details?id=com.your
 const APP_LINK_IOS = 'https://apps.apple.com/app/idYOUR_APP_ID';
 const APP_LINK = Platform.OS === 'ios' ? APP_LINK_IOS : APP_LINK_ANDROID;
 
+// Replace with your live Privacy Policy URL before release
+const PRIVACY_POLICY_URL = 'https://qalbymuslim.com/privacy-policy';
+
 
 const THEME_OPTIONS = [
   { key: 'light', label: 'Light', preview: { backgroundColor: '#fff', textColor: '#222' } },
@@ -46,6 +49,16 @@ const THEME_OPTIONS = [
 const SettingsScreen = ({ navigation }) => {
   const [themeModalVisible, setThemeModalVisible] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState('system');
+
+  const openUrlSafe = async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) return Linking.openURL(url);
+      Alert.alert('Open Link', `Please visit: ${url}`);
+    } catch (err) {
+      Alert.alert('Open Link', `Please visit: ${url}`);
+    }
+  };
 
   // Professional settings options array
   const settingsOptions = [
@@ -109,10 +122,7 @@ const SettingsScreen = ({ navigation }) => {
     {
       icon: 'lock-closed-outline' as const,
       label: 'Privacy',
-      onPress: () => Alert.alert(
-        'Privacy Policy',
-        'We do not collect, store, or share any personal information. All data stays on your device.\n\nWe do not use cookies or tracking technologies.\n\nIf you contact us for support, your email will only be used to respond to your inquiry.\n\nBy using this app, you agree to this policy. For questions, contact qalbymuslim1@gmail.com.'
-      ),
+      onPress: async () => openUrlSafe(PRIVACY_POLICY_URL),
     },
     {
       icon: 'help-circle-outline' as const,
@@ -155,9 +165,11 @@ const SettingsScreen = ({ navigation }) => {
         >
           <Text style={styles.backButtonText}>Back to More</Text>
         </TouchableOpacity>
-        <Text style={styles.creditText}>
-          Privacy Policy: We do not collect, store, or share any personal information. All data stays on your device. For questions, contact qalbymuslim1@gmail.com.
-        </Text>
+        <TouchableOpacity onPress={() => openUrlSafe(PRIVACY_POLICY_URL)} accessibilityRole="button">
+          <Text style={styles.creditText}>
+            Privacy Policy: Visit our privacy page for details. For support, contact qalbymuslim1@gmail.com.
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Theme Modal */}

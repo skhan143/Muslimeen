@@ -201,11 +201,21 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
 
   useEffect(() => {
     fetchAllData();
+
+    // Update current time every second for UI clock
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
 
-    // Enhanced wave animation with more noticeable effect
+    // Update the formatted date/time every minute so the UI stays accurate
+    const minuteTimer = setInterval(() => {
+      const now = new Date();
+      const formattedDateStr = now.toLocaleDateString();
+      const formattedTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setFormattedDate(`Date: ${formattedDateStr} | Time: ${formattedTimeStr}`);
+    }, 60000);
+
+    // Run wave animation
     Animated.loop(
       Animated.sequence([
         Animated.parallel([
@@ -235,7 +245,14 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       ])
     ).start();
 
-    return () => clearInterval(timer);
+    // Initialize formatted date immediately so UI doesn't wait for minute tick
+    const now = new Date();
+    setFormattedDate(`Date: ${now.toLocaleDateString()} | Time: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+
+    return () => {
+      clearInterval(timer);
+      clearInterval(minuteTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -267,28 +284,19 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   };
 
   const fetchDateInfo = async () => {
-    const updateTime = () => {
-      const currentTime = new Date();
-      const formattedDate = currentTime.toLocaleDateString();
-      const formattedTime = currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      setFormattedDate(`Date: ${formattedDate} | Time: ${formattedTime}`);
-    };
-
-    updateTime(); // Update time immediately
-    const interval = setInterval(updateTime, 60000); // Update time every minute
-
     try {
       const response = await axios.get('https://worldtimeapi.org/api/ip');
       const { datetime } = response.data;
-      const formattedDate = new Date(datetime).toLocaleDateString();
-      const formattedTime = new Date(datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      setFormattedDate(`Date: ${formattedDate} | Time: ${formattedTime}`);
+      const formattedDateStr = new Date(datetime).toLocaleDateString();
+      const formattedTimeStr = new Date(datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setFormattedDate(`Date: ${formattedDateStr} | Time: ${formattedTimeStr}`);
     } catch (error) {
       console.error('Error fetching date info:', error);
       // Fallback to local time if API fails
-      updateTime();
-    } finally {
-      return () => clearInterval(interval);
+      const now = new Date();
+      const formattedDateStr = now.toLocaleDateString();
+      const formattedTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setFormattedDate(`Date: ${formattedDateStr} | Time: ${formattedTimeStr}`);
     }
   };
 
@@ -1170,20 +1178,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 2,
     letterSpacing: 0.5,
-  },
-  balanceLabel: {
-    fontSize: 14,
-    color: '#b2ebf2',
-    marginTop: 8,
-    fontWeight: '500',
-  },
-  balanceValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginTop: 2,
-    marginBottom: 2,
-    letterSpacing: 1,
   },
   timelineContainer: {
     marginTop: 18,

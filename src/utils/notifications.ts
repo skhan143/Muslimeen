@@ -18,8 +18,17 @@ Notifications.setNotificationHandler({
 });
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted';
+  try {
+    const existing = await Notifications.getPermissionsAsync();
+    const existingStatus = (existing as any)?.status;
+    if (existingStatus === 'granted' || existingStatus === 'provisional') return true;
+    const { status, ios } = await Notifications.requestPermissionsAsync();
+    const finalStatus = status || (ios && (ios as any).status) || '';
+    return finalStatus === 'granted' || finalStatus === 'provisional';
+  } catch (e) {
+    console.warn('Failed to request notification permission', e);
+    return false;
+  }
 }
 
 export async function schedulePrayerNotification(
@@ -28,6 +37,9 @@ export async function schedulePrayerNotification(
   body?: string,
   repeats = true
 ): Promise<string> {
+  if (!time || typeof time !== 'string' || !/^[0-9]{1,2}:[0-9]{2}$/.test(time)) {
+    throw new Error('Invalid time format. Expected HH:mm');
+  }
   const [hour, minute] = time.split(':').map(Number);
   const now = new Date();
   const notificationTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0);
@@ -42,16 +54,26 @@ export async function schedulePrayerNotification(
 
   // If prayer time matches current time (within 1 minute), show immediately
   if (now.getHours() === hour && Math.abs(now.getMinutes() - minute) <= 1) {
-    // Show immediate notification
-    await Notifications.scheduleNotificationAsync({ content, trigger: null });
+    let immediateId: string | null = null;
+    try {
+      immediateId = await Notifications.scheduleNotificationAsync({ content, trigger: null });
+    } catch (e) {
+      console.warn('Failed to show immediate notification', e);
+    }
     // Also schedule repeating/calendar notification if requested
     if (repeats) {
-      return Notifications.scheduleNotificationAsync({
-        content,
-        trigger: { type: 'calendar', repeats: true, dateComponents: { hour, minute } } as any,
-      });
+      try {
+        const repeatingId = await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: { type: 'calendar', repeats: true, dateComponents: { hour, minute } } as any,
+        });
+        return repeatingId;
+      } catch (e) {
+        console.warn('Failed to schedule repeating notification after immediate', e);
+        return immediateId || '';
+      }
     }
-    return 'immediate';
+    return immediateId || '';
   }
 
   // Otherwise schedule for next occurrence using calendar trigger (repeats daily if repeats=true)
@@ -59,14 +81,24 @@ export async function schedulePrayerNotification(
     notificationTime.setDate(notificationTime.getDate() + 1);
   }
 
-  return Notifications.scheduleNotificationAsync({
-    content,
-    trigger: { type: 'calendar', repeats, dateComponents: { hour, minute } } as any,
-  });
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content,
+      trigger: { type: 'calendar', repeats, dateComponents: { hour, minute } } as any,
+    });
+    return id;
+  } catch (e) {
+    console.warn('Failed to schedule notification', e);
+    return '';
+  }
 }
 
 export async function cancelPrayerNotification(identifier: string): Promise<void> {
-  return Notifications.cancelScheduledNotificationAsync(identifier);
+  try {
+    await Notifications.cancelScheduledNotificationAsync(identifier);
+  } catch (e) {
+    console.warn('Failed to cancel scheduled notification', e);
+  }
 }
 
 // Storage key for scheduled notification ids
@@ -105,10 +137,14 @@ export async function restoreScheduledIds(): Promise<{ [prayer: string]: { id: s
   }
 }
 export function openAppSettings() {
+  const url = Platform.OS === 'ios' ? 'app-settings:' : undefined;
   if (Platform.OS === 'ios') {
-    Linking.openURL('app-settings:');
+    Linking.canOpenURL(url as string).then(can => {
+      if (can) Linking.openURL(url as string);
+      else console.warn('Cannot open app-settings URL');
+    }).catch(e => console.warn('Failed to open app settings', e));
   } else {
-    Linking.openSettings();
+    Linking.openSettings().catch(e => console.warn('Failed to open app settings', e));
   }
 }
 
