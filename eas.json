@@ -17,6 +17,10 @@
         "simulator": false
       },
       "autoIncrement": true
+    },
+    "Development": {
+      "developmentClient": true,
+      "distribution": "internal"
     }
   },
   "submit": {
