@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.Muslimeen",
+  "bundleIdentifier": "com.qalbymuslim.app",
       "buildNumber": "1",
       "infoPlist": {
         "UIBackgroundModes": [
@@ -33,7 +33,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.Muslimeen"
+  "package": "com.qalbymuslim.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
