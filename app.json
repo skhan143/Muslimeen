@@ -1,8 +1,8 @@
 {
   "expo": {
     "newArchEnabled": true,
-  "name": "Qalby Muslim",
-  "slug": "qalbymuslim",
+    "name": "Qalby Muslim",
+    "slug": "Muslimeen",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-  "bundleIdentifier": "com.qalbymuslim.app",
+      "bundleIdentifier": "com.qalbymuslim.app",
       "buildNumber": "1",
       "infoPlist": {
         "UIBackgroundModes": [
@@ -33,7 +33,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-  "package": "com.qalbymuslim.app"
+      "package": "com.qalbymuslim.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -45,6 +45,7 @@
       "eas": {
         "projectId": "e3afeb57-c1cd-4be6-af15-e2a3a73b28ce"
       }
-    }
+    },
+    "owner": "shahariyar.khan"
   }
 }
