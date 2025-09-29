@@ -18,14 +18,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.qalbymuslim.app",
-      "buildNumber": "1",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
         ],
         "NSUserTrackingUsageDescription": "This app may request permission to track for improved personalization.",
         "NSLocationWhenInUseUsageDescription": "Needed to calculate prayer times and Qibla direction.",
-        "NSCalendarsUsageDescription": "Optional: used for adding prayer reminders to your calendar."
+        "NSCalendarsUsageDescription": "Optional: used for adding prayer reminders to your calendar.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
