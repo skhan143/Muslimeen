@@ -285,13 +285,14 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
 
   const fetchDateInfo = async () => {
     try {
-      const response = await axios.get('https://worldtimeapi.org/api/ip');
+      const response = await axios.get('https://worldtimeapi.org/api/ip', { timeout: 10000 });
       const { datetime } = response.data;
       const formattedDateStr = new Date(datetime).toLocaleDateString();
       const formattedTimeStr = new Date(datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       setFormattedDate(`Date: ${formattedDateStr} | Time: ${formattedTimeStr}`);
     } catch (error) {
-      console.error('Error fetching date info:', error);
+      // Log axios-friendly details when available so we can inspect network errors in Metro
+      console.error('Error fetching date info:', error, (error && typeof error === 'object' && (error as any).toJSON) ? (error as any).toJSON() : null);
       // Fallback to local time if API fails
       const now = new Date();
       const formattedDateStr = now.toLocaleDateString();
@@ -302,10 +303,10 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
 
   const fetchArabicDateInfo = async () => {
     try {
-      const response = await axios.get('https://api.aladhan.com/v1/gToH');
+      const response = await axios.get('https://api.aladhan.com/v1/gToH', { timeout: 10000 });
       setArabicDateInfo(response.data);
     } catch (error) {
-      console.error('Error fetching Arabic date info:', error);
+      console.error('Error fetching Arabic date info:', error, (error && typeof error === 'object' && (error as any).toJSON) ? (error as any).toJSON() : null);
       setError('Unable to fetch Islamic date information.');
     }
   };
@@ -318,10 +319,11 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
 
     const { latitude, longitude } = currentLocation;
     const method = 2; // Choose the desired prayer times calculation method
-    const apiUrl = `http://api.aladhan.com/v1/timings/${Math.floor(Date.now() / 1000)}?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${selectedMadhab}`;
+    // Use HTTPS (Android cleartext policies may block http requests)
+    const apiUrl = `https://api.aladhan.com/v1/timings/${Math.floor(Date.now() / 1000)}?latitude=${latitude}&longitude=${longitude}&method=${method}&school=${selectedMadhab}`;
 
     try {
-      const response = await axios.get(apiUrl);
+      const response = await axios.get(apiUrl, { timeout: 10000 });
       if (response.data?.data?.timings) {
         const data = response.data.data.timings;
         setPrayerTimes(data);
@@ -338,8 +340,22 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         setRamadanFastingTimes(ramadanFastingTimes);
       }
     } catch (error) {
-      console.error('Error fetching prayer times:', error);
-      setError('Unable to fetch prayer times. Please try again later.');
+      // Log extended axios error info where available to help diagnose 'Network Error'
+      console.error('Error fetching prayer times:', error, (error && typeof error === 'object' && (error as any).toJSON) ? (error as any).toJSON() : null);
+      // Try to fall back to persisted prayer times so the UI still shows something
+      try {
+        const raw = await AsyncStorage.getItem('prayerTimes:latest');
+        if (raw) {
+          const persisted = JSON.parse(raw);
+          setPrayerTimes(persisted);
+          console.info('Used persisted prayer times as a fallback.');
+          return;
+        }
+      } catch (e) {
+        console.warn('Failed to read persisted prayer times', e);
+      }
+
+      setError('Unable to fetch prayer times. Please check your internet connection and try again.');
     }
   };
 
