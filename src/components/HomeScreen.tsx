@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { requestNotificationPermission, schedulePrayerNotification, cancelPrayerNotification, persistScheduledId, removePersistedId, restoreScheduledIds } from '../utils/notifications';
 import { LinearGradient } from 'expo-linear-gradient';
+import WidgetDataManager from '../utils/WidgetDataManager';
 
 // Theme colors (matching App.tsx)
 const theme = {
@@ -196,6 +197,16 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         setNotificationIds(prev => ({ ...prev, ...ids }));
         setPrayerNotifications(prev => ({ ...prev, ...toggles }));
       }
+      
+      // Load saved Madhab selection
+      try {
+        const savedMadhab = await AsyncStorage.getItem('selectedMadhab');
+        if (savedMadhab !== null) {
+          setSelectedMadhab(parseInt(savedMadhab, 10));
+        }
+      } catch (e) {
+        console.warn('Failed to load saved Madhab selection', e);
+      }
     })();
   }, []);
 
@@ -209,10 +220,13 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
 
     // Update the formatted date/time every minute so the UI stays accurate
     const minuteTimer = setInterval(() => {
-      const now = new Date();
-      const formattedDateStr = now.toLocaleDateString();
-      const formattedTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      setFormattedDate(`Date: ${formattedDateStr} | Time: ${formattedTimeStr}`);
+      if (prayerTimes && Object.keys(prayerTimes).length > 0) {
+        const now = new Date();
+        const formattedDateStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear().toString().slice(-2)}`;
+        const formattedTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timeToNextPrayer = getTimeToNextPrayer();
+        setFormattedDate(`${formattedDateStr} | ${formattedTimeStr}${timeToNextPrayer}`);
+      }
     }, 60000);
 
     // Run wave animation
@@ -247,7 +261,10 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
 
     // Initialize formatted date immediately so UI doesn't wait for minute tick
     const now = new Date();
-    setFormattedDate(`Date: ${now.toLocaleDateString()} | Time: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+    const initialFormattedDateStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear().toString().slice(-2)}`;
+    const initialFormattedTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Don't add prayer time initially since prayer times aren't loaded yet
+    setFormattedDate(`${initialFormattedDateStr} | ${initialFormattedTimeStr}`);
 
     return () => {
       clearInterval(timer);
@@ -268,6 +285,32 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     }
   }, [currentTime, prayerTimes]);
 
+  // Reschedule Asr notification when prayer times update and notification was enabled
+  useEffect(() => {
+    const rescheduleAsrNotification = async () => {
+      if (prayerTimes.Asr && prayerNotifications.Asr && !notificationIds.Asr) {
+        // User had Asr notifications enabled but notification was cancelled due to Madhab change
+        // Schedule new notification with updated Asr time
+        const id = await schedulePrayerNotification('Asr', prayerTimes.Asr, `It's time for Asr prayer.`);
+        setNotificationIds((prev) => ({ ...prev, Asr: { id, time: prayerTimes.Asr } }));
+        await persistScheduledId('Asr', id, prayerTimes.Asr);
+      }
+    };
+    
+    rescheduleAsrNotification();
+  }, [prayerTimes.Asr, prayerNotifications.Asr, notificationIds.Asr]);
+
+  // Update formatted date with time to next prayer when prayer times change
+  useEffect(() => {
+    if (prayerTimes && Object.keys(prayerTimes).length > 0) {
+      const now = new Date();
+      const formattedDateStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear().toString().slice(-2)}`;
+      const formattedTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const timeToNextPrayer = getTimeToNextPrayer();
+      setFormattedDate(`${formattedDateStr} | ${formattedTimeStr}${timeToNextPrayer}`);
+    }
+  }, [prayerTimes]);
+
   const getLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -283,21 +326,71 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     }
   };
 
+  const getTimeToNextPrayer = () => {
+    if (!prayerTimes || Object.keys(prayerTimes).length === 0) return '';
+    
+    const now = new Date();
+    const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
+    const prayerOrder = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+    
+    // Convert prayer times to minutes
+    const prayerTimesInMinutes = {};
+    prayerOrder.forEach(prayer => {
+      if (prayerTimes[prayer]) {
+        const [hours, minutes] = prayerTimes[prayer].split(':').map(Number);
+        prayerTimesInMinutes[prayer] = hours * 60 + minutes;
+      }
+    });
+    
+    // Find next prayer
+    let nextPrayer = null;
+    let timeToNext = 0;
+    
+    for (const prayer of prayerOrder) {
+      if (prayerTimesInMinutes[prayer] && prayerTimesInMinutes[prayer] > currentTimeInMinutes) {
+        nextPrayer = prayer;
+        timeToNext = prayerTimesInMinutes[prayer] - currentTimeInMinutes;
+        break;
+      }
+    }
+    
+    // If no prayer found today, next prayer is Fajr tomorrow
+    if (!nextPrayer && prayerTimesInMinutes['Fajr']) {
+      nextPrayer = 'Fajr';
+      timeToNext = (24 * 60) - currentTimeInMinutes + prayerTimesInMinutes['Fajr'];
+    }
+    
+    if (nextPrayer && timeToNext > 0) {
+      const hours = Math.floor(timeToNext / 60);
+      const minutes = timeToNext % 60;
+      if (hours > 0) {
+        return ` | ${hours}h ${minutes}m to ${nextPrayer}`;
+      } else {
+        return ` | ${minutes}m to ${nextPrayer}`;
+      }
+    }
+    
+    return '';
+  };
+
   const fetchDateInfo = async () => {
     try {
       const response = await axios.get('https://worldtimeapi.org/api/ip', { timeout: 10000 });
       const { datetime } = response.data;
-      const formattedDateStr = new Date(datetime).toLocaleDateString();
-      const formattedTimeStr = new Date(datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      setFormattedDate(`Date: ${formattedDateStr} | Time: ${formattedTimeStr}`);
+      const date = new Date(datetime);
+      const formattedDateStr = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear().toString().slice(-2)}`;
+      const formattedTimeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const timeToNextPrayer = getTimeToNextPrayer();
+      setFormattedDate(`${formattedDateStr} | ${formattedTimeStr}${timeToNextPrayer}`);
     } catch (error) {
       // Log axios-friendly details when available so we can inspect network errors in Metro
       console.error('Error fetching date info:', error, (error && typeof error === 'object' && (error as any).toJSON) ? (error as any).toJSON() : null);
       // Fallback to local time if API fails
       const now = new Date();
-      const formattedDateStr = now.toLocaleDateString();
+      const formattedDateStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear().toString().slice(-2)}`;
       const formattedTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      setFormattedDate(`Date: ${formattedDateStr} | Time: ${formattedTimeStr}`);
+      const timeToNextPrayer = getTimeToNextPrayer();
+      setFormattedDate(`${formattedDateStr} | ${formattedTimeStr}${timeToNextPrayer}`);
     }
   };
 
@@ -439,6 +532,32 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     return () => clearInterval(interval);
   }, []);
 
+  // Update widget when ayah changes
+  useEffect(() => {
+    const currentAyah = ayahList[ayahIndex];
+    WidgetDataManager.updateWidgetAyah(currentAyah);
+  }, [ayahIndex]);
+
+  // Update widget when prayer times change
+  useEffect(() => {
+    if (prayerTimes && Object.keys(prayerTimes).length > 0) {
+      const timeToNext = getTimeToNextPrayer();
+      let nextPrayer = '';
+      if (timeToNext.includes('to ')) {
+        nextPrayer = timeToNext.split('to ')[1];
+      }
+      WidgetDataManager.updateWidgetPrayerTimes(prayerTimes, currentPrayer || '', nextPrayer, timeToNext);
+      WidgetDataManager.reloadWidgetTimeline();
+    }
+  }, [prayerTimes, currentPrayer]);
+
+  // Update widget when location changes
+  useEffect(() => {
+    if (locationName) {
+      WidgetDataManager.updateWidgetLocation(locationName);
+    }
+  }, [locationName]);
+
   const formatTo12Hour = (time: string) => {
     if (!time) return '--:--';
     const [hourStr, minuteStr] = time.split(':');
@@ -526,16 +645,16 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
 
         {/* Top Card: Date, Balance, Actions */}
         <LinearGradient
-          colors={["#00515f", "#368a95"]}
+          colors={["#0f2027", "#00515f", "#368a95"]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.topCardWrap, { minHeight: 260, maxHeight: 340 }]}
+          end={{ x: 1, y: 1 }}
+          style={[styles.topCardWrap, { minHeight: 260, maxHeight: 340, borderWidth: 2, borderColor: '#f7e8a4' }]}
         >
           <View style={{ flex: 1, flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'stretch', minWidth: 120, maxWidth: 340 }}>
             <Text style={{
               fontSize: 22,
               fontWeight: 'bold',
-              color: theme.white,
+              color: '#f7e8a4',
               letterSpacing: 0.5,
               textAlign: 'left',
               marginBottom: 4,
@@ -551,7 +670,7 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               fontFamily: Platform.OS === 'ios' ? 'Arial Rounded MT Bold' : 'sans-serif',
             }}>{formattedDate}</Text>
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
-              <Text style={{ fontSize: 28, color: '#f7e8a4', fontWeight: 'bold', textAlign: 'center', marginBottom: 10, fontFamily: Platform.OS === 'ios' ? 'Geeza Pro' : 'sans-serif', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4, lineHeight: 38 }}>
+              <Text style={{ fontSize: 28, color: '#f7e8a4', fontWeight: 'bold', textAlign: 'center', marginBottom: 10, fontFamily: Platform.OS === 'ios' ? 'Geeza Pro' : 'sans-serif', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4, lineHeight: 28 * 1.8 }}>
                 {ayahList[ayahIndex].arabic}
               </Text>
               <Text style={{ fontSize: 17, color: theme.white, textAlign: 'center', marginBottom: 6, fontWeight: '600', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>
@@ -573,7 +692,7 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
             style={[styles.glassyPrayerCard, { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, marginBottom: 0 }]}
           >
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="location-outline" size={22} color="#f7e8a4" style={{ marginRight: 8 }} />
+              <Ionicons name="location" size={22} color="#f7e8a4" style={{ marginRight: 8 }} />
               <Text style={{ color: '#f7e8a4', fontSize: 17, fontWeight: 'bold', textShadowColor: '#00515f', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 }}>
                 {locationName || 'Your Location'}
               </Text>
@@ -604,14 +723,42 @@ const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
             <View style={{ backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 14, padding: 10, marginHorizontal: 2, marginBottom: 4, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#f7e8a4', shadowColor: '#00515f', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.10, shadowRadius: 8 }}>
               <TouchableOpacity
                 style={{ flex: 1, backgroundColor: selectedMadhab === 0 ? 'rgba(255,255,255,0.22)' : 'transparent', borderRadius: 10, padding: 8, alignItems: 'center', borderWidth: selectedMadhab === 0 ? 2 : 0, borderColor: selectedMadhab === 0 ? '#f7e8a4' : 'transparent' }}
-                onPress={() => setSelectedMadhab(0)}
+                onPress={async () => {
+                  const oldMadhab = selectedMadhab;
+                  setSelectedMadhab(0);
+                  try {
+                    await AsyncStorage.setItem('selectedMadhab', '0');
+                    // If Madhab changed and user had Asr notifications enabled, cancel old notification
+                    if (oldMadhab !== 0 && prayerNotifications.Asr && notificationIds.Asr && notificationIds.Asr.id) {
+                      await cancelPrayerNotification(notificationIds.Asr.id);
+                      await removePersistedId('Asr');
+                      setNotificationIds((prev) => ({ ...prev, Asr: null }));
+                    }
+                  } catch (e) {
+                    console.warn('Failed to save Madhab selection', e);
+                  }
+                }}
               >
                 <Text style={{ color: '#f7e8a4', fontWeight: 'bold', fontSize: 15 }}>Shafi’i/Maliki/Hanbali</Text>
                 <Text style={{ color: theme.white, fontSize: 12 }}>Earlier Asr</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ flex: 1, backgroundColor: selectedMadhab === 1 ? 'rgba(255,255,255,0.22)' : 'transparent', borderRadius: 10, padding: 8, alignItems: 'center', borderWidth: selectedMadhab === 1 ? 2 : 0, borderColor: selectedMadhab === 1 ? '#f7e8a4' : 'transparent' }}
-                onPress={() => setSelectedMadhab(1)}
+                onPress={async () => {
+                  const oldMadhab = selectedMadhab;
+                  setSelectedMadhab(1);
+                  try {
+                    await AsyncStorage.setItem('selectedMadhab', '1');
+                    // If Madhab changed and user had Asr notifications enabled, cancel old notification
+                    if (oldMadhab !== 1 && prayerNotifications.Asr && notificationIds.Asr && notificationIds.Asr.id) {
+                      await cancelPrayerNotification(notificationIds.Asr.id);
+                      await removePersistedId('Asr');
+                      setNotificationIds((prev) => ({ ...prev, Asr: null }));
+                    }
+                  } catch (e) {
+                    console.warn('Failed to save Madhab selection', e);
+                  }
+                }}
               >
                 <Text style={{ color: '#f7e8a4', fontWeight: 'bold', fontSize: 15 }}>Hanafi</Text>
                 <Text style={{ color: theme.white, fontSize: 12 }}>Later Asr</Text>

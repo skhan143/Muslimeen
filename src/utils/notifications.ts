@@ -4,12 +4,22 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Linking, Platform } from 'react-native';
 
+// Set up notification categories for iOS
+Notifications.setNotificationCategoryAsync('prayer-reminder', [
+  {
+    identifier: 'open',
+    buttonTitle: 'Open App',
+    options: {
+      opensAppToForeground: true,
+    },
+  },
+]);
+
 // Ensure notifications are displayed when the app is in the foreground.
 // Call this once (module initializer is fine) so scheduled/local notifications
 // will show an alert/sound while the app is open.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
@@ -20,11 +30,22 @@ Notifications.setNotificationHandler({
 export async function requestNotificationPermission(): Promise<boolean> {
   try {
     const existing = await Notifications.getPermissionsAsync();
-    const existingStatus = (existing as any)?.status;
-    if (existingStatus === 'granted' || existingStatus === 'provisional') return true;
-    const { status, ios } = await Notifications.requestPermissionsAsync();
-    const finalStatus = status || (ios && (ios as any).status) || '';
-    return finalStatus === 'granted' || finalStatus === 'provisional';
+    
+    if (existing.status === 'granted') return true;
+    
+    const { status } = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+        allowDisplayInCarPlay: false,
+        allowCriticalAlerts: false,
+        provideAppNotificationSettings: false,
+        allowProvisional: false,
+      },
+    });
+    
+    return status === 'granted';
   } catch (e) {
     console.warn('Failed to request notification permission', e);
     return false;
@@ -46,37 +67,17 @@ export async function schedulePrayerNotification(
 
   const content = {
     title: prayer === 'Sunrise' ? `Sunrise` : `${prayer} Prayer Time`,
-    body: body || `It's time for ${prayer} at ${time}.`,
-    sound: true,
-    // iOS 15+ interruption level: avoid marking these as "time-sensitive"
-    interruptionLevel: 'active',
+    body: body || `It's time for ${prayer} prayer at ${time}. 🕌`,
+    sound: 'default',
+    categoryIdentifier: 'prayer-reminder',
+    data: { 
+      prayer: prayer,
+      time: time,
+      type: 'prayer-notification'
+    },
   } as any;
 
-  // If prayer time matches current time (within 1 minute), show immediately
-  if (now.getHours() === hour && Math.abs(now.getMinutes() - minute) <= 1) {
-    let immediateId: string | null = null;
-    try {
-      immediateId = await Notifications.scheduleNotificationAsync({ content, trigger: null });
-    } catch (e) {
-      console.warn('Failed to show immediate notification', e);
-    }
-    // Also schedule repeating/calendar notification if requested
-    if (repeats) {
-      try {
-        const repeatingId = await Notifications.scheduleNotificationAsync({
-          content,
-          trigger: { type: 'calendar', repeats: true, dateComponents: { hour, minute } } as any,
-        });
-        return repeatingId;
-      } catch (e) {
-        console.warn('Failed to schedule repeating notification after immediate', e);
-        return immediateId || '';
-      }
-    }
-    return immediateId || '';
-  }
-
-  // Otherwise schedule for next occurrence using calendar trigger (repeats daily if repeats=true)
+  // Schedule for next occurrence using calendar trigger (repeats daily if repeats=true)
   if (notificationTime < now) {
     notificationTime.setDate(notificationTime.getDate() + 1);
   }

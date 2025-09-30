@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 // Stripe Product ID: prod_St2qhu5QB5sjjy
 const DONATE_URL = 'https://donate.stripe.com/7sY28r3Mhd1U8fD3SxeEo00'; // Stripe payment link
 
-const DonateUs: React.FC = () => {
+const DonateUs: React.FC<{ navigation: any }> = ({ navigation }) => {
   const handleDonate = () => {
     Linking.openURL(DONATE_URL);
   };
@@ -18,6 +18,25 @@ const DonateUs: React.FC = () => {
       end={{ x: 1, y: 1 }}
       style={styles.container}
     >
+      {/* Close Button */}
+      <TouchableOpacity 
+        style={styles.closeButton}
+        onPress={() => {
+          try {
+            if (navigation && navigation.goBack) {
+              navigation.goBack();
+            } else if (navigation && navigation.navigate) {
+              navigation.navigate('Home');
+            }
+          } catch (error) {
+            console.warn('Navigation error:', error);
+          }
+        }}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="close" size={28} color="#ffd700" />
+      </TouchableOpacity>
+      
       <View style={styles.card}>
         <Ionicons name="heart-outline" size={48} color="#ffd700" style={{ marginBottom: 12 }} />
         <Text style={styles.title}>Support Qalby Muslim</Text>
@@ -39,6 +58,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    right: 24,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    padding: 8,
+    zIndex: 10,
+    borderWidth: 1,
+    borderColor: '#ffd700',
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.13)',

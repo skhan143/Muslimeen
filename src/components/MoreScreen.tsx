@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import ZakatCalculator from './ZakatCalculator';
 import ScrollTasbih from './ScrollTasbih';
 import ZabihaHalalRestaurants from './ZabihaHalalRestaurants';
+import DonateUs from './DonateUs';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -33,7 +34,7 @@ const theme = {
 
 const MoreScreen: React.FC = () => {
   const navigation = useNavigation();
-  const [activeScreen, setActiveScreen] = useState<'more' | 'tasbih' | 'zabiha' | 'zakat'>('more');
+  const [activeScreen, setActiveScreen] = useState<'more' | 'tasbih' | 'zabiha' | 'zakat' | 'donate'>('more');
 
   // --- More Menu ---
   if (activeScreen === 'more') {
@@ -65,6 +66,10 @@ const MoreScreen: React.FC = () => {
                 <TouchableOpacity style={styles.moreMenuButton} onPress={() => setActiveScreen('zakat')}>
                   <Ionicons name="calculator-outline" size={28} color={theme.primary} style={{ marginBottom: 6 }} />
                   <Text style={styles.moreMenuText}>Zakat Calculator</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.moreMenuButton} onPress={() => setActiveScreen('donate')}>
+                  <Ionicons name="heart-outline" size={28} color={theme.primary} style={{ marginBottom: 6 }} />
+                  <Text style={styles.moreMenuText}>Donate Us</Text>
                 </TouchableOpacity>
                 {/* Family Routine removed for v1 (moved to experimental) */}
                 <TouchableOpacity style={styles.settingsMenuButton} onPress={() => (navigation as any).navigate('Settings', { fromMore: true })}>
@@ -111,6 +116,18 @@ const MoreScreen: React.FC = () => {
           <Ionicons name="arrow-back" size={22} color={theme.primary} />
         </TouchableOpacity>
         <ZakatCalculator />
+      </View>
+    );
+  }
+
+  // --- Donate Us Screen ---
+  if (activeScreen === 'donate') {
+    return (
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+        <TouchableOpacity style={styles.backButton} onPress={() => setActiveScreen('more')}>
+          <Ionicons name="arrow-back" size={22} color={theme.primary} />
+        </TouchableOpacity>
+        <DonateUs navigation={{ goBack: () => setActiveScreen('more') }} />
       </View>
     );
   }

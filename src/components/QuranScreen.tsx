@@ -1,4 +1,5 @@
 import { Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 const DONATE_URL = 'https://donate.stripe.com/7sY28r3Mhd1U8fD3SxeEo00';
 // src/screens/Quran.tsx
 import React, { useState, useEffect } from 'react';
@@ -45,10 +46,35 @@ const QuranScreen: React.FC = () => {
     fetchQuranText(selectedEdition);
   }, [selectedEdition]);
 
-  // Load bookmarks from localStorage (AsyncStorage) if needed
+  // Bookmark persistence functions
+  const saveBookmarks = async (bookmarksToSave: { surah: number; ayah?: number }[]) => {
+    try {
+      await AsyncStorage.setItem('quran_bookmarks', JSON.stringify(bookmarksToSave));
+    } catch (error) {
+      console.error('Error saving bookmarks:', error);
+    }
+  };
+
+  const loadBookmarks = async () => {
+    try {
+      const savedBookmarks = await AsyncStorage.getItem('quran_bookmarks');
+      if (savedBookmarks) {
+        setBookmarks(JSON.parse(savedBookmarks));
+      }
+    } catch (error) {
+      console.error('Error loading bookmarks:', error);
+    }
+  };
+
+  // Load bookmarks on component mount
   useEffect(() => {
-    // Optionally implement persistent bookmarks
+    loadBookmarks();
   }, []);
+
+  // Save bookmarks whenever bookmarks state changes
+  useEffect(() => {
+    saveBookmarks(bookmarks);
+  }, [bookmarks]);
 
   const fetchQuranText = async (edition: string) => {
     try {
@@ -116,7 +142,8 @@ const QuranScreen: React.FC = () => {
         activeOpacity={0.85}
         onLongPress={() => {
           // Bookmark surah
-          setBookmarks((prev) => [...prev, { surah: item.number }]);
+          const newBookmarks = [...bookmarks, { surah: item.number }];
+          setBookmarks(newBookmarks);
           Alert.alert('Bookmarked', `Surah ${item.englishName} bookmarked!`);
         }}
         style={{ width: '100%' }}
@@ -133,7 +160,7 @@ const QuranScreen: React.FC = () => {
                 marginBottom: 14,
                 paddingHorizontal: 8,
                 fontFamily: Platform.OS === 'ios' ? 'Geeza Pro' : 'sans-serif',
-                lineHeight: 44,
+                lineHeight: fontSize * 1.8,
                 backgroundColor: 'transparent',
                 flex: 1,
               },
@@ -149,7 +176,8 @@ const QuranScreen: React.FC = () => {
         {bookmarks.some(b => b.surah === item.number && !b.ayah) && (
           <TouchableOpacity
             onPress={() => {
-              setBookmarks(prev => prev.filter(b => !(b.surah === item.number && !b.ayah)));
+              const filteredBookmarks = bookmarks.filter(b => !(b.surah === item.number && !b.ayah));
+              setBookmarks(filteredBookmarks);
               Alert.alert('Bookmark Removed', `Surah ${item.englishName} unbookmarked.`);
             }}
           >
@@ -179,7 +207,15 @@ const QuranScreen: React.FC = () => {
         end={{ x: 1, y: 1 }}
         style={styles.ayahCardContainer}
       >
-        <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView 
+          style={{ width: '100%' }} 
+          contentContainerStyle={{ paddingBottom: 40, paddingTop: 20 }}
+          showsVerticalScrollIndicator={true}
+          bounces={true}
+          contentInsetAdjustmentBehavior="automatic"
+          scrollIndicatorInsets={{ right: 2 }}
+          indicatorStyle="black"
+        >
           {/* Surah navigation */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <TouchableOpacity
@@ -203,7 +239,7 @@ const QuranScreen: React.FC = () => {
                     marginBottom: 0,
                     paddingHorizontal: 8,
                     fontFamily: Platform.OS === 'ios' ? 'Geeza Pro' : 'sans-serif',
-                    lineHeight: 44,
+                    lineHeight: fontSize * 1.8,
                     backgroundColor: 'transparent',
                     maxWidth: '90%',
                   },
@@ -245,16 +281,8 @@ const QuranScreen: React.FC = () => {
               <Text style={{ color: displayMode === 'transliteration' ? '#fff' : '#00515f', fontWeight: 'bold', fontSize: 14 }}>Transliteration</Text>
             </TouchableOpacity>
           </View>
-          {/* Font size controls and search */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity onPress={() => setFontSize((f) => Math.max(18, f - 2))} style={{ marginHorizontal: 6 }}>
-                <Text style={{ fontSize: 22, color: '#00515f' }}>A-</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setFontSize((f) => Math.min(48, f + 2))} style={{ marginHorizontal: 6 }}>
-                <Text style={{ fontSize: 26, color: '#00515f' }}>A+</Text>
-              </TouchableOpacity>
-            </View>
+          {/* Search only */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'flex-end' }}>
             <TextInput
               style={{ borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 4, minWidth: 120, fontSize: 15 }}
               placeholder={displayMode === 'translation' ? 'Search ayah or translation' : 'Search ayah or roman'}
@@ -272,7 +300,8 @@ const QuranScreen: React.FC = () => {
                 setTimeout(() => setHighlightedAyah(null), 500);
               }}
               onLongPress={() => {
-                setBookmarks((prev) => [...prev, { surah: surah.number, ayah: ayah.number }]);
+                const newBookmarks = [...bookmarks, { surah: surah.number, ayah: ayah.number }];
+                setBookmarks(newBookmarks);
                 Alert.alert('Bookmarked', `Ayah ${ayah.number} of Surah ${surah.englishName} bookmarked!`);
               }}
             >
@@ -287,7 +316,7 @@ const QuranScreen: React.FC = () => {
                     marginBottom: 14,
                     paddingHorizontal: 8,
                     fontFamily: Platform.OS === 'ios' ? 'Geeza Pro' : 'sans-serif',
-                    lineHeight: 44,
+                    lineHeight: fontSize * 1.8,
                     backgroundColor: 'transparent',
                   },
                   highlightedAyah === ayah.number && styles.ayahHighlight,
@@ -311,7 +340,8 @@ const QuranScreen: React.FC = () => {
               {bookmarks.some(b => b.surah === surah.number && b.ayah === ayah.number) && (
                 <TouchableOpacity
                   onPress={() => {
-                    setBookmarks(prev => prev.filter(b => !(b.surah === surah.number && b.ayah === ayah.number)));
+                    const filteredBookmarks = bookmarks.filter(b => !(b.surah === surah.number && b.ayah === ayah.number));
+                    setBookmarks(filteredBookmarks);
                     Alert.alert('Bookmark Removed', `Ayah ${ayah.number} of Surah ${surah.englishName} unbookmarked.`);
                   }}
                 >
@@ -379,17 +409,31 @@ const QuranScreen: React.FC = () => {
         <Image source={require('../Assets/QuranWallpaper.jpeg')} style={styles.quranImage} />
         {/* Credit text below Quran image */}
         <Text style={styles.creditText}>Quran text and translations provided by AlQuran Cloud</Text>
-        <TouchableOpacity
-          style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', marginTop: 0, marginBottom: 2, paddingVertical: 1, paddingHorizontal: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.10)' }}
-          onPress={() => {
-            Linking.openURL(DONATE_URL);
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={{ fontSize: 11, color: '#b88c4a', marginRight: 3, fontWeight: '400' }}>Donate</Text>
-          <Text style={{ fontSize: 12, color: '#eabf7b', marginRight: 1 }}>us to keep going</Text>
-          <Text style={{ fontSize: 12, color: '#e67e22', marginLeft: 2 }}>♥</Text>
-        </TouchableOpacity>
+        
+        {/* Font controls on left, Donate on right */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2, paddingHorizontal: 20, width: '100%' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => setFontSize((f) => Math.max(18, f - 2))} style={{ marginHorizontal: 4, padding: 4 }}>
+              <Text style={{ fontSize: 16, color: '#00515f', fontWeight: 'bold' }}>A-</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setFontSize((f) => Math.min(48, f + 2))} style={{ marginHorizontal: 4, padding: 4 }}>
+              <Text style={{ fontSize: 18, color: '#00515f', fontWeight: 'bold' }}>A+</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 11, color: '#888', marginLeft: 8, fontStyle: 'italic' }}>Tap text to bookmark</Text>
+          </View>
+          
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 1, paddingHorizontal: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.10)' }}
+            onPress={() => {
+              Linking.openURL(DONATE_URL);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 11, color: '#b88c4a', marginRight: 3, fontWeight: '400' }}>Donate</Text>
+            <Text style={{ fontSize: 12, color: '#eabf7b', marginRight: 1 }}>us to keep going</Text>
+            <Text style={{ fontSize: 12, color: '#e67e22', marginLeft: 2 }}>♥</Text>
+          </TouchableOpacity>
+        </View>
         {!selectedSurah ? (
           <>
             <FlatList

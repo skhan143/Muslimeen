@@ -6,24 +6,51 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "simulator": true,
+        "credentialsSource": "remote"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "simulator": false,
+        "credentialsSource": "remote"
+      }
+    },
+    "testflight": {
+      "distribution": "store",
+      "ios": {
+        "simulator": false,
+        "credentialsSource": "remote"
+      },
+      "autoIncrement": true
     },
     "production": {
       "distribution": "store",
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "credentialsSource": "remote"
       },
-      "autoIncrement": true
-    },
-    "Development": {
-      "developmentClient": true,
-      "distribution": "internal"
+      "autoIncrement": true,
+      "env": {
+        "NODE_ENV": "production"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "testflight": {
+      "ios": {
+        "appleId": "shahariyarkhan123@gmail.com",
+        "ascAppId": "6753021182"
+      }
+    },
+    "production": {
+      "ios": {
+        "appleId": "shahariyarkhan123@gmail.com",
+        "ascAppId": "6753021182"
+      }
+    }
   }
 }

@@ -314,19 +314,13 @@ const QiblaScreen = forwardRef<any, QiblaScreenProps>((
                   <View
                     style={[styles.kabaOverlay, { transform: [{ rotate: `${kabaRotate}deg` }], marginTop: moderateScale(40, 0.25) }]}
                   >
-                    <Image
-                      source={require("../Assets/images/kaba.png")}
-                      style={styles.kabaImage as any}
-                    />
+                    <Text style={styles.kabaEmoji}>🕋</Text>
                   </View>
                 </View>
 
                 <View style={{ height: 32 }} />
                 <View style={[styles.qiblaDirection, { marginTop: 12, padding: 12, borderRadius: 16, backgroundColor: '#eaf6fbCC', alignSelf: 'center', minWidth: 120, justifyContent: 'center', alignItems: 'center', shadowColor: '#368a95', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.10, shadowRadius: 6, elevation: 2 }] }>
-                  <Image
-                    source={require("../Assets/images/kaba.png")}
-                    style={styles.kabaIcon as any}
-                  />
+                  <Text style={styles.kabaIconEmoji}>🕋</Text>
                   <Text style={{
                     fontSize: 28,
                     color: '#00515f',
@@ -397,21 +391,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     zIndex: 999,
   },
-  kabaImage: {
-    resizeMode: "center",
-    height: 100,
-    marginTop: 20,
-    width: 60,
-    zIndex: 999,
-  },
   qiblaDirection: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-  },
-  kabaIcon: {
-    width: moderateScale(35, 0.25),
-    height: moderateScale(35, 0.25),
   },
   image: {
     resizeMode: "contain",
@@ -564,6 +547,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#2e7d32',
     borderRadius: 2,
     marginTop: -4,
+  },
+  kabaEmoji: {
+    fontSize: 30,
+    marginTop: 20,
+    textAlign: 'center',
+    textShadowColor: '#000',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  kabaIconEmoji: {
+    fontSize: 24,
+    textAlign: 'center',
   },
   arrowGlow: {
     shadowColor: '#1bc700',

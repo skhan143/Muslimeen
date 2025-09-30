@@ -375,7 +375,7 @@ useEffect(() => {
             )}
             {index === currentIndex ? (
               <>
-                <Text style={[styles.arabic, item.arabic === 'لَا إِلٰهَ إِلَّا أَنتَ سُبْحَانَكَ إِنِّي كُنتُ مِنَ الظَّالِمِينَ' && { fontSize: 28 }]}>{item.arabic}</Text>
+                <Text style={[styles.arabic, item.arabic === 'لَا إِلٰهَ إِلَّا أَنتَ سُبْحَانَكَ إِنِّي كُنتُ مِنَ الظَّالِمِينَ' && { fontSize: 24, lineHeight: 24 * 1.8 }]}>{item.arabic}</Text>
                 <TypewriterText
                   text={item.transliteration}
                   style={styles.transliteration}
@@ -448,12 +448,13 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   arabic: {
-    fontSize: 44,
+    fontSize: 36,
     color: '#00515f',
     fontWeight: 'bold',
-    marginBottom: 18,
+    marginBottom: 12,
     textAlign: 'center',
     fontFamily: Platform.OS === 'ios' ? 'Geeza Pro' : 'sans-serif',
+    lineHeight: 36 * 1.8,
   },
   transliteration: {
     fontSize: 22,
@@ -465,7 +466,7 @@ const styles = StyleSheet.create({
   translation: {
     fontSize: 18,
     color: '#7f8c8d',
-    marginBottom: 16,
+    marginBottom: 10,
     textAlign: 'center',
   },
   count: {
@@ -480,7 +481,7 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 40,
     borderRadius: 32,
-    marginTop: 24,
+    marginTop: 16,
     marginBottom: 10,
     shadowColor: '#3498db',
     shadowOffset: { width: 0, height: 2 },

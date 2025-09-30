@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { TouchableWithoutFeedback } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
-import { Switch, Alert } from 'react-native';
+import { Switch, Alert, TouchableOpacity } from 'react-native';
 import { schedulePrayerNotification, scheduleMulkNotification, cancelPrayerNotification, requestNotificationPermission, persistScheduledId, removePersistedId, restoreScheduledIds, openAppSettings } from '../utils/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -55,6 +55,40 @@ const NotificationsScreen = ({ navigation }) => {
   }, []);
 
   const [prayerTimesPersisted, setPrayerTimesPersisted] = React.useState<any>(null);
+
+  // Function to customize Surah Mulk time
+  const customizeMulkTime = () => {
+    Alert.prompt(
+      'Set Surah Mulk Reminder Time',
+      'Enter your preferred time (24-hour format, e.g., 22:30):',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Set Time',
+          onPress: async (timeInput) => {
+            if (timeInput && /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(timeInput)) {
+              // Cancel existing notification
+              if (notificationIds['Surah Mulk'] && notificationIds['Surah Mulk'].id) {
+                await cancelPrayerNotification(notificationIds['Surah Mulk'].id);
+                await removePersistedId('Surah Mulk');
+              }
+              
+              // Schedule new notification with custom time
+              const id = await scheduleMulkNotification(timeInput, `Time to recite Surah Al-Mulk.`);
+              setNotificationIds(prev => ({ ...prev, 'Surah Mulk': { id, time: timeInput } }));
+              await persistScheduledId('Surah Mulk', id, timeInput);
+              
+              Alert.alert('Success', `Surah Mulk reminder set for ${timeInput}`);
+            } else {
+              Alert.alert('Invalid Time', 'Please enter a valid time in HH:MM format (e.g., 22:30)');
+            }
+          }
+        }
+      ],
+      'plain-text',
+      notificationIds['Surah Mulk']?.time || '22:00'
+    );
+  };
   return (
     <LinearGradient colors={["#00515f", "#368a95"]} style={{ flex: 1 }}>
       <View style={styles.container}>
@@ -65,14 +99,15 @@ const NotificationsScreen = ({ navigation }) => {
           <View key={prayer} style={[styles.toggleRow, { alignItems: 'center' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ flexDirection: 'column' }}>
-                <Text style={styles.toggleLabel}>{prayer}</Text>
-                {prayer === 'Surah Mulk' && (
-                  <Text style={styles.subtext}>Recommended/Sunnah: recite before sleep — schedules 1 hour after Isha.</Text>
+                {prayer === 'Surah Mulk' ? (
+                  <TouchableOpacity onPress={customizeMulkTime}>
+                    <Text style={[styles.toggleLabel, { textDecorationLine: 'underline' }]}>{prayer}</Text>
+                    <Text style={styles.subtext}>Recommended/Sunnah: recite before sleep — tap to set your preferred time.</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.toggleLabel}>{prayer}</Text>
                 )}
               </View>
-              {notificationIds[prayer] && notificationIds[prayer].time && (
-                <Text style={{ color: '#fff', marginLeft: 8, fontSize: 13 }}>({notificationIds[prayer].time})</Text>
-              )}
             </View>
             <Switch
               value={prayerNotifications[prayer]}
@@ -96,22 +131,10 @@ const NotificationsScreen = ({ navigation }) => {
                   const defaultFromPrayerTimes = prayerTimesPersisted && prayerTimesPersisted[prayer];
                   const defaultFromPersisted = notificationIds[prayer] && notificationIds[prayer].time;
                   if (prayer === 'Surah Mulk') {
-                    // Schedule at Isha + 1 hour if possible
-                    let mulkTime = '23:00';
-                    try {
-                      const isha = prayerTimesPersisted && prayerTimesPersisted['Isha'];
-                      if (isha) {
-                        const [h, m] = isha.split(':').map(Number);
-                        const dt = new Date();
-                        dt.setHours(h + 1, m, 0, 0);
-                        const hh = dt.getHours().toString().padStart(2, '0');
-                        const mm = dt.getMinutes().toString().padStart(2, '0');
-                        mulkTime = `${hh}:${mm}`;
-                      } else if (defaultFromPersisted) {
-                        mulkTime = defaultFromPersisted;
-                      }
-                    } catch (e) {
-                      console.warn('Failed to compute Mulk time', e);
+                    // Use a default evening time or previously set time
+                    let mulkTime = '22:00'; // Default to 10:00 PM
+                    if (defaultFromPersisted) {
+                      mulkTime = defaultFromPersisted;
                     }
                     const id = await scheduleMulkNotification(mulkTime, `Time to recite Surah Al-Mulk.`);
                     setNotificationIds(prev => ({ ...prev, [prayer]: { id, time: mulkTime } }));
