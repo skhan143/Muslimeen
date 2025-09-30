@@ -3,7 +3,7 @@
     "newArchEnabled": true,
     "name": "Qalby Muslim",
     "slug": "qalbymuslim",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -29,8 +29,12 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "entitlements": {
-        "aps-environment": "production"
-      }
+        "aps-environment": "production",
+        "com.apple.security.application-groups": [
+          "group.com.qalbymuslim.app.widget"
+        ]
+      },
+      "buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {
