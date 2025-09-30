@@ -1,0 +1,46 @@
+name: Development Build
+description: Build and test for development branches
+
+start_conditions:
+  - branch_changes:
+      branch: develop
+  - pull_request:
+      target_branch: main
+
+environment:
+  xcode: 15.1
+  node_js: 18.x
+
+variables:
+  - name: NODE_ENV
+    value: development
+  - name: EXPO_PUBLIC_API_URL
+    value: https://api.aladhan.com/v1
+  - name: EXPO_PUBLIC_APP_ENV
+    value: development
+
+steps:
+  - name: Install Dependencies
+    script: ci_pre_xcodebuild.sh
+
+  - name: Build for Testing
+    xcodebuild:
+      scheme: QalbyMuslim
+      destination: platform=iOS Simulator,name=iPhone 15,OS=latest
+      action: build-for-testing
+
+  - name: Test
+    xcodebuild:
+      scheme: QalbyMuslim
+      destination: platform=iOS Simulator,name=iPhone 15,OS=latest
+      action: test-without-building
+
+  - name: Archive (Debug)
+    xcodebuild:
+      scheme: QalbyMuslim
+      destination: generic/platform=iOS
+      action: archive
+      configuration: Debug
+
+  - name: Post Build
+    script: ci_post_xcodebuild.sh

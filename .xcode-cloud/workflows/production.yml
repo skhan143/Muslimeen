@@ -1,0 +1,72 @@
+name: Production Build
+description: Build and deploy to TestFlight and App Store
+
+start_conditions:
+  - branch_changes:
+      branch: main
+      files:
+        - "**/*.swift"
+        - "**/*.m"
+        - "**/*.ts"
+        - "**/*.tsx"
+        - "ios/**"
+        - "package.json"
+        - "ios/Podfile"
+        - "ios/Podfile.lock"
+
+environment:
+  xcode: 15.1
+  node_js: 18.x
+  
+variables:
+  - name: NODE_ENV
+    value: production
+  - name: EXPO_PUBLIC_API_URL
+    value: https://api.aladhan.com/v1
+  - name: EXPO_PUBLIC_APP_ENV
+    value: production
+  - name: IPHONEOS_DEPLOYMENT_TARGET
+    value: "14.0"
+
+steps:
+  - name: Install Dependencies
+    script: ci_pre_xcodebuild.sh
+
+  - name: Build for Testing
+    xcodebuild:
+      scheme: QalbyMuslim
+      destination: platform=iOS Simulator,name=iPhone 15,OS=latest
+      action: build-for-testing
+
+  - name: Test
+    xcodebuild:
+      scheme: QalbyMuslim
+      destination: platform=iOS Simulator,name=iPhone 15,OS=latest
+      action: test-without-building
+
+  - name: Archive
+    xcodebuild:
+      scheme: QalbyMuslim
+      destination: generic/platform=iOS
+      action: archive
+      configuration: Release
+
+  - name: Export Archive
+    export_archive:
+      export_method: app-store
+
+  - name: TestFlight
+    app_store_connect:
+      auth: api_key
+      api_key_id: $API_KEY_ID
+      api_issuer_id: $API_ISSUER_ID
+      distribute_external: true
+      groups:
+        - Internal Testing
+        - External Testing
+      notifications:
+        - email: true
+          external: true
+
+  - name: Post Build
+    script: ci_post_xcodebuild.sh
